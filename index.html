@@ -183,6 +183,7 @@ details summary{cursor:pointer;font-weight:600;font-size:14px;padding:10px 0;min
 textarea.csv{min-height:180px;font-family:ui-monospace,Menlo,monospace;font-size:12px}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
+.notes-wrap textarea{padding-right:60px}
 /* sync pill + login */
 .sync{display:inline-flex;align-items:center;gap:6px;background:none;border:0;padding:8px 0;margin:-8px 0;font:inherit;color:inherit;cursor:pointer}
 .sync i{width:8px;height:8px;border-radius:50%;background:var(--muted)}
@@ -538,7 +539,7 @@ function formHTML(d){
     '<div class="field"><label for="f-company">Company</label><input type="text" id="f-company" data-f="company" autocomplete="off" autocapitalize="words" value="'+esc(d.company)+'"></div>'+
     '<div class="field"><span class="lbl">How warm is the lead?</span><div class="seg">'+rating+'</div></div>'+
     '<div class="field"><span class="lbl">Interested in</span><div class="chips">'+ints+'</div></div>'+
-    '<div class="field"><label for="f-notes">Notes</label><textarea id="f-notes" data-f="notes" placeholder="What did they ask about? Next step? (The keyboard mic works for dictation.)">'+esc(d.notes)+'</textarea></div>'+
+    '<div class="field"><label for="f-notes">Notes</label><div class="notes-wrap"><textarea id="f-notes" data-f="notes" placeholder="What did they ask about? Next step?">'+esc(d.notes)+'</textarea><button type="button" class="mic" data-mic aria-pressed="false" aria-label="Dictate notes"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button></div></div>'+
     '<details><summary>More details</summary><div class="stack">'+
       '<div class="field"><label for="f-badge">Printed badge code</label><input type="text" id="f-badge" data-f="badgeId" autocomplete="off" autocapitalize="characters" placeholder="Small code under the QR, if there is one" value="'+esc(d.badgeId)+'"></div>'+
       '<label class="switch"><input type="checkbox" data-f="alreadyScanned"'+(d.alreadyScanned?' checked':'')+'>Already scanned on a licensed scanner</label>'+
@@ -558,6 +559,7 @@ function bindForm(host,d){
     var b=e.target.closest('button');if(!b||!host.contains(b))return;
     if(b.dataset.rate){d.rating=d.rating===b.dataset.rate?'':b.dataset.rate;$$('[data-rate]',host).forEach(function(x){x.setAttribute('aria-pressed',String(x.dataset.rate===d.rating))})}
     else if(b.dataset.int!==undefined){var i=d.interests.indexOf(b.dataset.int);if(i>-1)d.interests.splice(i,1);else d.interests.push(b.dataset.int);b.setAttribute('aria-pressed',String(i<0))}
+    else if(b.hasAttribute('data-mic')){toggleMic(b,host,d)}
   });
 }
 function paintPhoto(host,d){var pb=$('#photoBlock',host);if(pb)pb.innerHTML=photoBlockHTML(d)}
@@ -579,6 +581,45 @@ async function handlePhoto(d,file,host){
   if(d.qrState==='fail')toast('QR not readable. Try retaking the photo.');
 }
 
+/* ---------- Dictation (browser speech recognition: Android Chrome, desktop Chrome/Edge, some iPhones) ---------- */
+var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+var rec=null,recOn=false,recBtn=null;
+function joinText(a,b){if(!b)return a;if(!a)return b.replace(/^\s+/,'');return /\s$/.test(a)||/^\s/.test(b)?a+b:a+' '+b}
+function stopMic(){
+  recOn=false;
+  if(rec){try{rec.onend=null;rec.stop()}catch(e){}rec=null}
+  if(recBtn){recBtn.setAttribute('aria-pressed','false');recBtn=null}
+}
+function toggleMic(btn,host,d){
+  if(!SR)return;
+  if(recOn){stopMic();return}
+  var ta=$('[data-f="notes"]',host);if(!ta)return;
+  var base=ta.value;
+  rec=new SR();rec.lang=navigator.language||'en-GB';rec.continuous=false;rec.interimResults=true;
+  recOn=true;recBtn=btn;btn.setAttribute('aria-pressed','true');
+  rec.onresult=function(e){
+    var fin='',live='';
+    for(var i=e.resultIndex;i<e.results.length;i++){
+      var t=e.results[i][0].transcript;
+      if(e.results[i].isFinal)fin+=t;else live+=t;
+    }
+    if(fin)base=joinText(base,fin);
+    ta.value=joinText(base,live);d.notes=ta.value;
+  };
+  rec.onerror=function(e){
+    var er=e&&e.error;
+    if(er==='not-allowed'||er==='service-not-allowed'){toast('Microphone is blocked. Allow it in your browser settings.');stopMic()}
+    else if(er==='network'){toast('Dictation needs a signal. Try the keyboard mic instead.');stopMic()}
+    else if(er==='audio-capture'){toast('No microphone found.');stopMic()}
+  };
+  rec.onend=function(){
+    if(!recOn||!rec)return;
+    try{rec.start()}catch(x){stopMic()}       // keeps listening through pauses until the mic is tapped again
+  };
+  try{rec.start()}catch(x){stopMic();toast('Couldn’t start dictation.')}
+}
+if(SR)document.documentElement.classList.add('has-dict');
+
 /* ---------- Sheets ---------- */
 function openSheet(title,build,opts){
   closeSheet();
@@ -590,7 +631,7 @@ function openSheet(title,build,opts){
   }
   build($('.sheet-body',scrim),scrim);
 }
-function closeSheet(){var s=$('#sheet');if(s)s.remove()}
+function closeSheet(){stopMic();var s=$('#sheet');if(s)s.remove()}
 
 function openSetup(first){
   openSheet(first?'Welcome':'Your details',function(body){
@@ -926,6 +967,7 @@ function paintChrome(){
   paintSync();
 }
 function renderAll(){
+  stopMic();
   paintChrome();
   if(S.tab==='capture')renderCapture();else if(S.tab==='leads')renderLeads();else renderRescan();
   wake(S.tab==='rescan');
