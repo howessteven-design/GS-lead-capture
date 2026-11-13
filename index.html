@@ -1,0 +1,983 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0F152F">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="GS Leads">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>GSXP Lead Capture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --navy:#0F152F;
+  --bg:#F5F6FB; --surface:#FFFFFF; --surface2:#ECEFF8; --ink:#0F152F; --muted:#586082; --line:#DADEEE;
+  --teal:#35D6D0; --violet:#7B5CF0; --rose:#E8507A; --coral:#F4845A;
+  --primary:#6446E0; --primary-ink:#FFFFFF;
+  --hot:#D93A68; --warm:#E8703F; --cold:#13A39D;
+  --ok:#0E8F6B; --bad:#C93434;
+  --grad:linear-gradient(90deg,#35D6D0 0%,#7B5CF0 38%,#E8507A 72%,#F4845A 100%);
+  --cap-bg:#0F152F; --cap-ink:#FFFFFF;
+  --head:'General Sans','Manrope','Inter',system-ui,sans-serif;
+  --body:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  color-scheme:light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0B1026; --surface:#151B3B; --surface2:#1E2550; --ink:#F1F3FF; --muted:#9FA8CF; --line:#2B3364;
+    --primary:#8A6FFF; --primary-ink:#0B1026;
+    --hot:#FF6F96; --warm:#FF9A6E; --cold:#35D6D0;
+    --ok:#3DDBA9; --bad:#FF7B7B;
+    --cap-bg:#1E2550; --cap-ink:#FFFFFF;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0B1026; --surface:#151B3B; --surface2:#1E2550; --ink:#F1F3FF; --muted:#9FA8CF; --line:#2B3364;
+  --primary:#8A6FFF; --primary-ink:#0B1026;
+  --hot:#FF6F96; --warm:#FF9A6E; --cold:#35D6D0;
+  --ok:#3DDBA9; --bad:#FF7B7B;
+  --cap-bg:#1E2550; --cap-ink:#FFFFFF;
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:inherit}
+html,body{height:100%;margin:0}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.45;-webkit-text-size-adjust:100%;overscroll-behavior:none}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--violet);outline-offset:2px}
+.vh{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none}
+
+#app{display:flex;flex-direction:column;height:100%;max-width:640px;margin:0 auto;position:relative}
+
+/* header */
+.top{padding:12px 16px 10px;background:var(--surface);border-bottom:1px solid var(--line);position:relative}
+.top::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:3px;background:var(--grad)}
+.top-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{font-family:var(--head);font-weight:800;font-size:18px;letter-spacing:-.01em;line-height:1.1}
+.brand small{display:block;font-family:var(--body);font-weight:500;font-size:13px;color:var(--muted);letter-spacing:0;margin-top:2px}
+.who{display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--line);border-radius:999px;padding:6px 12px 6px 6px;max-width:58%;min-height:44px}
+.who i{flex:none;width:30px;height:30px;border-radius:50%;background:var(--navy);color:#fff;display:grid;place-items:center;font-style:normal;font-weight:700;font-size:13px}
+.who span{font-size:13px;line-height:1.2;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+
+/* main */
+main{flex:1;overflow-y:auto;overflow-x:hidden;padding:16px 16px 24px;-webkit-overflow-scrolling:touch}
+.stack{display:flex;flex-direction:column;gap:14px}
+h2{font-family:var(--head);font-size:22px;line-height:1.2;margin:0;letter-spacing:-.01em}
+h3{font-family:var(--head);font-size:16px;margin:0}
+.muted{color:var(--muted)}
+.small{font-size:13px;margin:0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px}
+
+/* nav */
+nav{display:flex;background:var(--surface);border-top:1px solid var(--line)}
+nav button{flex:1;background:none;border:0;padding:9px 4px 8px;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:12px;font-weight:600;color:var(--muted);position:relative;min-height:56px}
+nav button svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+nav button[aria-current="page"]{color:var(--primary)}
+nav button[aria-current="page"]::before{content:"";position:absolute;top:-1px;left:25%;right:25%;height:3px;border-radius:0 0 3px 3px;background:var(--primary)}
+.badge{position:absolute;top:5px;left:calc(50% + 8px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--rose);color:#fff;font-size:11px;font-weight:700;display:grid;place-items:center}
+.badge:empty{display:none}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:12px;border:1px solid var(--line);background:var(--surface);padding:12px 16px;font-weight:600;min-height:48px;text-align:center}
+.btn.primary{background:var(--primary);color:var(--primary-ink);border-color:transparent}
+.btn.ghost{background:transparent}
+.btn.block{display:flex;width:100%}
+.btn.sm{min-height:44px;padding:8px 14px;font-size:14px}
+.btn.danger{color:var(--bad);border-color:var(--bad);background:transparent}
+.btn:disabled{opacity:.5}
+
+.capture-btn{display:flex;align-items:center;gap:14px;padding:18px;border-radius:18px;border:3px solid transparent;background:linear-gradient(var(--cap-bg),var(--cap-bg)) padding-box,var(--grad) border-box;color:var(--cap-ink);cursor:pointer}
+.capture-btn svg{flex:none;width:36px;height:36px;stroke:#fff;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.capture-btn b{display:block;font-family:var(--head);font-size:19px;line-height:1.2}
+.capture-btn span{display:block;font-size:13px;opacity:.8;margin-top:2px}
+.link-btn{display:inline-block;margin-top:10px;font-size:14px;font-weight:600;color:var(--primary);text-decoration:underline;text-underline-offset:3px;cursor:pointer;padding:10px 0}
+
+/* photo block */
+.photo-row{display:flex;gap:14px;align-items:flex-start}
+.thumb{flex:none;width:96px;height:120px;object-fit:cover;border-radius:10px;background:var(--surface2);border:1px solid var(--line)}
+.skeleton{animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.5}}
+.photo-info{display:flex;flex-direction:column;gap:6px;align-items:flex-start;min-width:0}
+.status{margin:0;font-weight:700;display:flex;align-items:center;gap:8px}
+.status .dot{width:10px;height:10px;border-radius:50%;background:currentColor}
+.status.ok{color:var(--ok)} .status.bad{color:var(--bad)} .status.wait{color:var(--muted)}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all;color:var(--muted)}
+
+/* form */
+.field{display:flex;flex-direction:column;gap:6px}
+.field>label,.field>.lbl{font-size:14px;font-weight:600}
+input[type=text],input[type=email],input[type=password],textarea{width:100%;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-height:48px}
+textarea{min-height:110px;resize:vertical}
+input::placeholder,textarea::placeholder{color:var(--muted);opacity:.8}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.seg button{border:1.5px solid var(--line);background:var(--surface);border-radius:12px;padding:12px 6px;font-weight:700;min-height:48px;display:flex;align-items:center;justify-content:center;gap:8px}
+.seg button i{width:10px;height:10px;border-radius:50%;background:var(--c)}
+.seg button[aria-pressed="true"]{border-color:var(--c);box-shadow:inset 0 0 0 1.5px var(--c);background:color-mix(in srgb,var(--c) 12%,var(--surface))}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chips button{border:1.5px solid var(--line);background:var(--surface);border-radius:999px;padding:8px 14px;font-size:14px;font-weight:500;min-height:44px}
+.chips button[aria-pressed="true"]{background:var(--primary);color:var(--primary-ink);border-color:transparent;font-weight:600}
+.notes-wrap{position:relative}
+.mic{display:none;position:absolute;right:8px;bottom:8px;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--surface2);place-items:center}
+.has-dict .mic{display:grid}
+.mic svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.mic[aria-pressed="true"]{background:var(--rose);color:#fff;border-color:transparent}
+details summary{cursor:pointer;font-weight:600;font-size:14px;padding:10px 0;min-height:44px;display:flex;align-items:center}
+.switch{display:flex;align-items:center;gap:12px;min-height:48px;font-size:15px}
+.switch input{width:24px;height:24px;accent-color:var(--primary)}
+
+/* stats */
+.stats{display:flex;gap:10px}
+.stat{flex:1;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.stat b{display:block;font-family:var(--head);font-size:26px;line-height:1.1}
+.stat span{font-size:13px;color:var(--muted)}
+
+/* list */
+.tools{display:flex;flex-direction:column;gap:10px}
+.filters{display:flex;gap:8px;overflow-x:auto}
+.filters button{flex:none;border:1.5px solid var(--line);background:var(--surface);border-radius:999px;padding:8px 14px;font-size:14px;font-weight:600;min-height:44px}
+.filters button[aria-pressed="true"]{background:var(--navy);color:#fff;border-color:var(--navy)}
+:root[data-theme="dark"] .filters button[aria-pressed="true"]{background:var(--primary);color:var(--primary-ink);border-color:transparent}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .filters button[aria-pressed="true"]{background:var(--primary);color:var(--primary-ink);border-color:transparent}}
+.lead{display:flex;gap:12px;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px;align-items:center}
+.lead .thumb{width:60px;height:72px}
+.lead .body{min-width:0;flex:1}
+.lead .nm{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lead .sub{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tags{display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap}
+.tag{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;border-radius:999px;padding:3px 10px;background:var(--surface2)}
+.tag i{width:8px;height:8px;border-radius:50%;background:var(--c,var(--muted))}
+.tag.toscan{background:color-mix(in srgb,var(--violet) 16%,var(--surface));color:var(--primary)}
+.tag.scanned{background:color-mix(in srgb,var(--teal) 20%,var(--surface));color:var(--ok)}
+.empty{text-align:center;padding:36px 12px;color:var(--muted)}
+.empty h3{color:var(--ink);margin-bottom:6px}
+
+/* rescan */
+.prog{height:6px;border-radius:3px;background:var(--surface2);overflow:hidden}
+.prog i{display:block;height:100%;background:var(--grad);border-radius:3px;transition:width .25s}
+.qrbox{background:#fff;border-radius:18px;padding:14px;display:grid;place-items:center;border:1px solid var(--line)}
+.qrbox canvas{width:100%;max-width:min(100%,52vh);height:auto;aspect-ratio:1;image-rendering:pixelated;display:block}
+.qrbox img{width:100%;max-height:52vh;object-fit:contain;display:block;border-radius:8px}
+.notebox{white-space:pre-wrap;word-break:break-word;background:var(--surface2);border-radius:10px;padding:12px 14px;font-size:15px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+/* sheet */
+.scrim{position:fixed;inset:0;background:rgba(8,12,32,.55);display:flex;align-items:flex-end;justify-content:center;z-index:50}
+.sheet{width:100%;max-width:640px;max-height:92%;overflow-y:auto;background:var(--bg);border-radius:20px 20px 0 0;padding:18px 16px calc(20px + env(safe-area-inset-bottom,0px));animation:up .22s ease-out}
+@keyframes up{from{transform:translateY(40px);opacity:.6}}
+.sheet-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px}
+.x{width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--surface);font-size:20px;line-height:1}
+
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));background:var(--navy);color:#fff;border-radius:12px;padding:12px 18px;font-weight:600;font-size:14px;z-index:80;max-width:88%;text-align:center;box-shadow:0 6px 24px rgba(0,0,0,.25)}
+.banner{background:color-mix(in srgb,var(--coral) 18%,var(--surface));border:1px solid var(--coral);border-radius:12px;padding:10px 14px;font-size:14px}
+textarea.csv{min-height:180px;font-family:ui-monospace,Menlo,monospace;font-size:12px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* sync pill + login */
+.sync{display:inline-flex;align-items:center;gap:6px;background:none;border:0;padding:8px 0;margin:-8px 0;font:inherit;color:inherit;cursor:pointer}
+.sync i{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.sync[data-s="ok"] i{background:var(--ok)}.sync[data-s="busy"] i{background:var(--violet)}.sync[data-s="off"] i{background:var(--warm)}.sync[data-s="err"] i{background:var(--bad)}
+.login{position:fixed;inset:0;z-index:90;background:var(--bg);overflow-y:auto;display:flex;padding:24px 20px calc(24px + env(safe-area-inset-bottom,0px))}
+.login-in{margin:auto;width:100%;max-width:420px}
+.login .brand{font-size:24px}
+.msg-ok{color:var(--ok)}.msg-bad{color:var(--bad)}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <div class="top-row">
+      <div class="brand">Greenspan XP<small><button type="button" class="sync" id="syncBtn" data-s="off" aria-live="polite"><i></i><span id="syncT">Lead capture</span></button></small></div>
+      <button class="who" id="who" type="button" aria-label="Change your name or show"><i id="whoI">?</i><span id="whoT">Set up</span></button>
+    </div>
+  </header>
+  <main id="view" tabindex="-1"></main>
+  <nav aria-label="Sections">
+    <button type="button" data-tab="capture"><svg viewBox="0 0 24 24"><path d="M4 8h3l1.6-2.4h6.8L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.6"/></svg>Capture</button>
+    <button type="button" data-tab="leads"><svg viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>Leads<span class="badge" id="bLeads"></span></button>
+    <button type="button" data-tab="rescan"><svg viewBox="0 0 24 24"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><path d="M8 11h8M8 15h8"/></svg>Rescan<span class="badge" id="bScan"></span></button>
+  </nav>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js" crossorigin="anonymous"></script>
+<script>
+(function(){
+'use strict';
+
+/* ---------- Config ---------- */
+var SUPABASE_URL='https://zhyiakcgajywbnjzqjth.supabase.co';
+var SUPABASE_KEY='sb_publishable_mJPv05SVeyssDTArb_ZZjg_0E4lMaS1';   // publishable key: safe in the browser, protected by row level security
+var BUCKET='badge-photos';
+var TEAM = ['Brook Tuffin','Dan Reed','Jamie Davenport','Max Huber','Nathaly Riano-Gomez','Rod Morton','Steven Howes'];  // Sales + Support staff from Events HQ
+var INTERESTS = ['Puttify','Adventure Golf','Modular Golf','Signature Greens','Aerial courses','Play environments','Themed environments','FEC delivery','Stadium and arena'];
+var RATINGS = [{id:'hot',label:'Hot',c:'var(--hot)'},{id:'warm',label:'Warm',c:'var(--warm)'},{id:'cold',label:'Cold',c:'var(--cold)'}];
+var DEFAULT_EVENT = 'IAAPA Expo 2026 Orlando';
+
+/* ---------- Helpers ---------- */
+function $(s,r){return (r||document).querySelector(s)}
+function $$(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function uid(){try{return crypto.randomUUID()}catch(e){return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){var r=Math.random()*16|0;return (c==='x'?r:(r&3|8)).toString(16)})}}
+function trunc(s,n){s=String(s||'');return s.length>n?s.slice(0,n-1)+'…':s}
+function cap(s){return s?s.charAt(0).toUpperCase()+s.slice(1):''}
+function tick(){return new Promise(function(r){setTimeout(r,0)})}
+function iso(ms){return ms?new Date(ms).toISOString():null}
+function msOf(s){return s?new Date(s).getTime():null}
+function timeLabel(ts){
+  var d=new Date(ts),now=new Date();
+  var t=d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});
+  if(d.toDateString()===now.toDateString())return t;
+  return d.toLocaleDateString([], {weekday:'short'})+' '+t;
+}
+function toast(msg){
+  var old=$('.toast');if(old)old.remove();
+  var t=document.createElement('div');t.className='toast';t.setAttribute('role','status');t.textContent=msg;
+  document.body.appendChild(t);setTimeout(function(){t.remove()},2600);
+}
+function copyText(text){
+  return new Promise(function(resolve){
+    function fallback(){
+      try{var ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();var ok=document.execCommand('copy');ta.remove();resolve(!!ok)}catch(e){resolve(false)}
+    }
+    try{if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(function(){resolve(true)},fallback)}else fallback()}catch(e){fallback()}
+  });
+}
+
+/* ---------- State ---------- */
+var S={tab:'capture',settings:{},leads:[],pending:0,filter:'all',q:'',draft:null,rq:0,rqId:null,rqView:'clean',persisted:true};
+function loadSettings(){try{return JSON.parse(localStorage.getItem('gsxp_lc_settings')||'{}')||{}}catch(e){return {}}}
+function saveSettings(){try{localStorage.setItem('gsxp_lc_settings',JSON.stringify(S.settings))}catch(e){}}
+S.settings=loadSettings();
+if(!S.settings.event)S.settings.event=DEFAULT_EVENT;
+
+var sb=null,session=null,started=false,rt=null,signed={};
+var sync={busy:false,again:false,err:''};
+
+/* ---------- Local store (IndexedDB): works offline, holds photos and unsynced changes ---------- */
+var db=null,mem=[];
+function openDB(){
+  return new Promise(function(res){
+    try{
+      var r=indexedDB.open('gsxp-lead-capture',1);
+      r.onupgradeneeded=function(){r.result.createObjectStore('leads',{keyPath:'id'})};
+      r.onsuccess=function(){res(r.result)};
+      r.onerror=function(){res(null)};
+      r.onblocked=function(){res(null)};
+    }catch(e){res(null)}
+  });
+}
+function rp(req){return new Promise(function(res,rej){req.onsuccess=function(){res(req.result)};req.onerror=function(){rej(req.error)}})}
+function store(mode){return db.transaction('leads',mode).objectStore('leads')}
+function dbAll(){if(!db)return Promise.resolve(mem.slice());return rp(store('readonly').getAll())}
+function dbGet(id){if(!db)return Promise.resolve(mem.find(function(x){return x.id===id})||null);return rp(store('readonly').get(id)).then(function(r){return r||null})}
+function dbPut(l){
+  if(!db){var i=mem.findIndex(function(x){return x.id===l.id});if(i<0)mem.push(l);else mem[i]=l;return Promise.resolve()}
+  return rp(store('readwrite').put(l));
+}
+function dbDel(id){
+  if(!db){mem=mem.filter(function(x){return x.id!==id});return Promise.resolve()}
+  return rp(store('readwrite').delete(id));
+}
+async function refresh(){
+  try{
+    var all=await dbAll();
+    S.pending=all.filter(function(l){return l.dirty||l.deleted}).length;
+    S.leads=all.filter(function(l){return !l.deleted}).sort(function(a,b){return b.createdAt-a.createdAt});
+  }catch(e){S.leads=[];S.pending=0}
+}
+
+/* ---------- Photo urls ---------- */
+var urls={};
+function urlFor(l){
+  if(l.photo){
+    if(!urls[l.id]||urls[l.id].blob!==l.photo)urls[l.id]={blob:l.photo,url:URL.createObjectURL(l.photo)};
+    return urls[l.id].url;
+  }
+  var s=l.photoPath&&signed[l.photoPath];
+  return (s&&s.exp>Date.now())?s.url:'';
+}
+async function ensureSigned(){
+  if(!sb||!session||!navigator.onLine)return false;
+  var now=Date.now(),need=[];
+  S.leads.forEach(function(l){
+    if(l.photoPath&&!l.photo){var s=signed[l.photoPath];if(!s||s.exp-now<300000)need.push(l.photoPath)}
+  });
+  if(!need.length)return false;
+  try{
+    for(var i=0;i<need.length;i+=100){
+      var r=await sb.storage.from(BUCKET).createSignedUrls(need.slice(i,i+100),3600);
+      if(r.error)throw r.error;
+      (r.data||[]).forEach(function(x){if(x.signedUrl)signed[x.path]={url:x.signedUrl,exp:now+3600000}});
+    }
+    return true;
+  }catch(e){return false}
+}
+
+/* ---------- Supabase mapping ---------- */
+function toRow(l,path){
+  var sc=l.status==='scanned';
+  return {id:l.id,created_at:iso(l.createdAt),captured_by:l.capturedBy||null,event:l.event||null,name:l.name||null,company:l.company||null,
+    rating:l.rating||null,interests:l.interests||[],notes:l.notes||null,badge_id:l.badgeId||null,qr:l.qr||null,photo_path:path||null,
+    status:l.status||'toscan',scan_source:l.scanSource||null,scanned_at:sc?iso(l.scannedAt||Date.now()):null,scanned_by:sc?(l.scannedBy||null):null,
+    exported_at:iso(l.exportedAt)};
+}
+function fromRow(r){
+  return {id:r.id,createdAt:msOf(r.created_at),updatedAt:msOf(r.updated_at),capturedBy:r.captured_by||'',event:r.event||'',
+    photo:null,photoPath:r.photo_path||null,photoUploaded:true,qr:r.qr||'',name:r.name||'',company:r.company||'',rating:r.rating||'',
+    interests:r.interests||[],notes:r.notes||'',badgeId:r.badge_id||'',status:r.status||'toscan',scanSource:r.scan_source||'',
+    scannedAt:msOf(r.scanned_at),scannedBy:r.scanned_by||'',exportedAt:msOf(r.exported_at),
+    dirty:false,synced:true,deleted:false,serverUpdatedAt:r.updated_at};
+}
+function errText(e){return (e&&(e.message||e.error_description||e.msg))||String(e||'')}
+
+/* ---------- Sync ---------- */
+async function pushOne(l){
+  if(l.deleted){
+    if(l.synced||l.photoPath){
+      var d=await sb.from('leads').delete().eq('id',l.id);
+      if(d.error)throw d.error;
+      if(l.photoPath){try{await sb.storage.from(BUCKET).remove([l.photoPath])}catch(e){}}
+    }
+    await dbDel(l.id);return;
+  }
+  var path=l.photoPath||null;
+  if(l.photo&&!l.photoUploaded){
+    var np=l.id+'-'+Date.now()+'.jpg';
+    var up=await sb.storage.from(BUCKET).upload(np,l.photo,{contentType:'image/jpeg',upsert:false});
+    if(up.error)throw up.error;
+    if(path){try{await sb.storage.from(BUCKET).remove([path])}catch(e){}}
+    path=np;
+  }
+  var res=await sb.from('leads').upsert(toRow(l,path),{onConflict:'id'}).select('updated_at').single();
+  if(res.error)throw res.error;
+  var cur=await dbGet(l.id);
+  if(!cur)return;
+  cur.photoPath=path;cur.synced=true;
+  if(cur.updatedAt===l.updatedAt){cur.dirty=false;cur.photoUploaded=true;cur.serverUpdatedAt=res.data.updated_at}
+  await dbPut(cur);
+}
+async function pullAll(){
+  var rows=[],from=0,step=1000;
+  for(;;){
+    var r=await sb.from('leads').select('*').order('created_at',{ascending:false}).range(from,from+step-1);
+    if(r.error)throw r.error;
+    rows=rows.concat(r.data||[]);
+    if(!r.data||r.data.length<step)break;
+    from+=step;
+  }
+  var local=await dbAll(),byId={},remote={};
+  local.forEach(function(l){byId[l.id]=l});
+  for(var i=0;i<rows.length;i++){
+    var row=rows[i];remote[row.id]=1;
+    var l=byId[row.id];
+    if(l&&(l.dirty||l.deleted))continue;
+    if(l&&l.serverUpdatedAt===row.updated_at)continue;
+    var nl=fromRow(row);
+    if(l&&l.photo&&l.photoPath===nl.photoPath)nl.photo=l.photo;
+    await dbPut(nl);
+  }
+  for(var j=0;j<local.length;j++){
+    var x=local[j];
+    if(x.synced&&!x.dirty&&!x.deleted&&!remote[x.id])await dbDel(x.id);
+  }
+}
+async function syncNow(){
+  if(!sb||!session)return;
+  if(!navigator.onLine){paintSync();return}
+  if(sync.busy){sync.again=true;return}
+  sync.busy=true;sync.err='';paintSync();
+  try{
+    var all=await dbAll(),todo=all.filter(function(l){return l.dirty||l.deleted}),failed=0,lastErr='';
+    for(var i=0;i<todo.length;i++){
+      try{await pushOne(todo[i])}catch(e){failed++;lastErr=errText(e)}
+    }
+    await pullAll();
+    await refresh();
+    await ensureSigned();
+    if(failed)sync.err=lastErr||'Some leads did not sync';
+  }catch(e){sync.err=errText(e)||'Sync failed'}
+  sync.busy=false;
+  await refresh();
+  paintSync();repaint();
+  if(sync.again){sync.again=false;queueSync(300)}
+}
+var syncTimer=null;
+function queueSync(delay){clearTimeout(syncTimer);syncTimer=setTimeout(syncNow,delay||200)}
+function startRealtime(){
+  if(rt||!sb)return;
+  try{rt=sb.channel('leads-feed').on('postgres_changes',{event:'*',schema:'public',table:'leads'},function(){queueSync(400)}).subscribe()}catch(e){rt=null}
+}
+function stopRealtime(){if(rt&&sb){try{sb.removeChannel(rt)}catch(e){}}rt=null}
+
+function paintSync(){
+  var b=$('#syncBtn'),t=$('#syncT');if(!b||!t)return;
+  var st,txt;
+  if(!sb){st='off';txt='Saving on this phone only'}
+  else if(!session){st='off';txt='Signed out'}
+  else if(sync.busy){st='busy';txt='Syncing…'}
+  else if(!navigator.onLine){st='off';txt='Offline'+(S.pending?' · '+S.pending+' to sync':'')}
+  else if(sync.err){st='err';txt='Sync problem · tap to retry'}
+  else if(S.pending){st='busy';txt=S.pending+' to sync'}
+  else{st='ok';txt='All synced'}
+  b.setAttribute('data-s',st);t.textContent=txt;
+}
+
+/* ---------- Image + QR ---------- */
+async function loadImage(file){
+  try{if(window.createImageBitmap)return await createImageBitmap(file)}catch(e){}
+  return new Promise(function(res,rej){
+    var u=URL.createObjectURL(file),i=new Image();
+    i.onload=function(){res(i)};i.onerror=function(){rej(new Error('image'))};i.src=u;
+  });
+}
+function dims(img){return {w:img.width||img.naturalWidth,h:img.height||img.naturalHeight}}
+function drawScaled(img,maxSide){
+  var d=dims(img),s=Math.min(1,maxSide/Math.max(d.w,d.h));
+  var c=document.createElement('canvas');c.width=Math.max(1,Math.round(d.w*s));c.height=Math.max(1,Math.round(d.h*s));
+  c.getContext('2d').drawImage(img,0,0,c.width,c.height);return c;
+}
+async function decodeQR(canvas){
+  if('BarcodeDetector' in window){
+    try{var bd=new BarcodeDetector({formats:['qr_code']});var r=await bd.detect(canvas);if(r&&r.length&&r[0].rawValue)return r[0].rawValue}catch(e){}
+  }
+  if(!window.jsQR)return null;
+  var W=canvas.width,H=canvas.height;
+  var regions=[[0,0,W,H],[W*.45,H*.5,W*.55,H*.5],[W*.35,H*.4,W*.65,H*.6],[0,H*.45,W,H*.55],[W*.5,H*.6,W*.5,H*.4]];
+  for(var i=0;i<regions.length;i++){
+    var x=Math.round(regions[i][0]),y=Math.round(regions[i][1]),w=Math.round(regions[i][2]),h=Math.round(regions[i][3]);
+    var scales=i===0?[1,.6]:[1,1.6];
+    for(var j=0;j<scales.length;j++){
+      var sc=scales[j],t=document.createElement('canvas');
+      t.width=Math.max(1,Math.round(w*sc));t.height=Math.max(1,Math.round(h*sc));
+      var cx=t.getContext('2d');cx.drawImage(canvas,x,y,w,h,0,0,t.width,t.height);
+      var id=cx.getImageData(0,0,t.width,t.height);
+      var res=window.jsQR(id.data,t.width,t.height,{inversionAttempts:'attemptBoth'});
+      if(res&&res.data)return res.data;
+      await tick();
+    }
+  }
+  return null;
+}
+function qrDrawable(text){return !!(text&&window.qrcode&&/^[\x00-\xFF]*$/.test(text))}
+function drawQR(canvas,text){
+  var q=null,levels=['M','L'];
+  for(var i=0;i<levels.length&&!q;i++){try{var t=window.qrcode(0,levels[i]);t.addData(text);t.make();q=t}catch(e){q=null}}
+  if(!q)return false;
+  var n=q.getModuleCount(),quiet=4,cell=Math.max(4,Math.floor(900/(n+quiet*2))),size=cell*(n+quiet*2);
+  canvas.width=canvas.height=size;
+  var ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,size,size);ctx.fillStyle='#000';
+  for(var r=0;r<n;r++)for(var c=0;c<n;c++)if(q.isDark(r,c))ctx.fillRect((c+quiet)*cell,(r+quiet)*cell,cell,cell);
+  return true;
+}
+
+/* ---------- Draft / lead model ---------- */
+function newDraft(){
+  return {id:uid(),createdAt:Date.now(),photo:null,photoUrl:'',photoChanged:false,qr:'',qrState:'none',name:'',company:'',rating:'',interests:[],notes:'',badgeId:'',alreadyScanned:false};
+}
+function draftFromLead(l){
+  var url=urlFor(l),has=!!(l.photo||l.photoPath);
+  return {id:l.id,createdAt:l.createdAt,photo:l.photo||null,photoUrl:url,photoChanged:false,qr:l.qr||'',qrState:has?(l.qr?'ok':'fail'):'none',name:l.name||'',company:l.company||'',rating:l.rating||'',interests:(l.interests||[]).slice(),notes:l.notes||'',badgeId:l.badgeId||'',alreadyScanned:l.status==='scanned',_lead:l};
+}
+function leadFromDraft(d){
+  var base=d._lead||{};
+  var changed=!!d.photoChanged;
+  var status=d.alreadyScanned?'scanned':'toscan';
+  var scanSource=base.scanSource||'',scannedAt=base.scannedAt||null,scannedBy=base.scannedBy||'';
+  if(status==='scanned'){
+    if(!scanSource)scanSource='Licensed scanner at booth';
+    if(!scannedAt){scannedAt=Date.now();scannedBy=S.settings.name||''}
+  }else{scanSource='';scannedAt=null;scannedBy=''}
+  return {id:d.id,createdAt:d.createdAt,updatedAt:Date.now(),capturedBy:base.capturedBy||S.settings.name||'',event:base.event||S.settings.event||'',
+    photo:changed?d.photo:(base.photo||null),photoPath:base.photoPath||null,photoUploaded:changed?false:(base.photoUploaded||false),
+    qr:d.qr,name:d.name.trim(),company:d.company.trim(),rating:d.rating,interests:d.interests,notes:d.notes.trim(),badgeId:d.badgeId.trim(),
+    status:status,scanSource:scanSource,scannedAt:scannedAt,scannedBy:scannedBy,exportedAt:base.exportedAt||null,
+    dirty:true,synced:!!base.synced,deleted:false,serverUpdatedAt:base.serverUpdatedAt||null};
+}
+function hasContent(d){return !!(d.photo||d.name.trim()||d.company.trim()||d.notes.trim())}
+function noteForScanner(l){
+  var b=[];
+  if(l.rating)b.push(cap(l.rating));
+  if(l.interests&&l.interests.length)b.push('Interested in: '+l.interests.join(', '));
+  if(l.notes)b.push(l.notes);
+  if(l.capturedBy)b.push('Met by '+l.capturedBy);
+  return b.join('. ');
+}
+function leadTitle(l){return l.name||l.company||'Badge photo'}
+
+/* ---------- Form (shared by Capture and Edit) ---------- */
+function photoBlockHTML(d){
+  if(d.qrState==='checking')return '<div class="photo-row"><div class="thumb skeleton"></div><div class="photo-info"><p class="status wait">Checking the QR code…</p></div></div>';
+  if(d.photoUrl){
+    var ok=d.qrState==='ok';
+    return '<div class="photo-row"><img class="thumb" src="'+d.photoUrl+'" alt="Badge photo"><div class="photo-info">'+
+      '<p class="status '+(ok?'ok':'bad')+'"><span class="dot"></span>'+(ok?'QR code read':'Can’t read the QR code')+'</p>'+
+      (ok?'<p class="small mono">'+esc(trunc(d.qr,40))+'</p>':'<p class="small muted">Retake it with the badge flat, filling the frame, and no glare on the QR code. You can still save this one.</p>')+
+      '<label class="btn ghost sm">Retake photo<input class="vh" type="file" accept="image/*" capture="environment" data-photo></label></div></div>';
+  }
+  return '<label class="capture-btn"><svg viewBox="0 0 24 24"><path d="M4 8h3l1.6-2.4h6.8L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.6"/></svg><div><b>Photograph the badge</b><span>Fill the frame with the badge so the QR code is sharp</span></div><input class="vh" type="file" accept="image/*" capture="environment" data-photo></label>'+
+    '<label class="link-btn">Choose an existing photo<input class="vh" type="file" accept="image/*" data-photo></label>';
+}
+function formHTML(d){
+  var rating=RATINGS.map(function(r){return '<button type="button" data-rate="'+r.id+'" aria-pressed="'+(d.rating===r.id)+'" style="--c:'+r.c+'"><i></i>'+r.label+'</button>'}).join('');
+  var ints=INTERESTS.map(function(x){return '<button type="button" data-int="'+esc(x)+'" aria-pressed="'+(d.interests.indexOf(x)>-1)+'">'+esc(x)+'</button>'}).join('');
+  return '<div class="stack">'+
+    '<div id="photoBlock">'+photoBlockHTML(d)+'</div>'+
+    '<div class="field"><label for="f-name">Name</label><input type="text" id="f-name" data-f="name" autocomplete="off" autocapitalize="words" placeholder="As printed on the badge" value="'+esc(d.name)+'"></div>'+
+    '<div class="field"><label for="f-company">Company</label><input type="text" id="f-company" data-f="company" autocomplete="off" autocapitalize="words" value="'+esc(d.company)+'"></div>'+
+    '<div class="field"><span class="lbl">How warm is the lead?</span><div class="seg">'+rating+'</div></div>'+
+    '<div class="field"><span class="lbl">Interested in</span><div class="chips">'+ints+'</div></div>'+
+    '<div class="field"><label for="f-notes">Notes</label><textarea id="f-notes" data-f="notes" placeholder="What did they ask about? Next step? (The keyboard mic works for dictation.)">'+esc(d.notes)+'</textarea></div>'+
+    '<details><summary>More details</summary><div class="stack">'+
+      '<div class="field"><label for="f-badge">Printed badge code</label><input type="text" id="f-badge" data-f="badgeId" autocomplete="off" autocapitalize="characters" placeholder="Small code under the QR, if there is one" value="'+esc(d.badgeId)+'"></div>'+
+      '<label class="switch"><input type="checkbox" data-f="alreadyScanned"'+(d.alreadyScanned?' checked':'')+'>Already scanned on a licensed scanner</label>'+
+    '</div></details>'+
+  '</div>';
+}
+function bindForm(host,d){
+  host.addEventListener('input',function(e){
+    var el=e.target;if(!el.dataset||!el.dataset.f)return;
+    if(el.type==='checkbox')d[el.dataset.f]=el.checked;else d[el.dataset.f]=el.value;
+  });
+  host.addEventListener('change',function(e){
+    var el=e.target;
+    if(el.hasAttribute&&el.hasAttribute('data-photo')&&el.files&&el.files[0]){handlePhoto(d,el.files[0],host);el.value=''}
+  });
+  host.addEventListener('click',function(e){
+    var b=e.target.closest('button');if(!b||!host.contains(b))return;
+    if(b.dataset.rate){d.rating=d.rating===b.dataset.rate?'':b.dataset.rate;$$('[data-rate]',host).forEach(function(x){x.setAttribute('aria-pressed',String(x.dataset.rate===d.rating))})}
+    else if(b.dataset.int!==undefined){var i=d.interests.indexOf(b.dataset.int);if(i>-1)d.interests.splice(i,1);else d.interests.push(b.dataset.int);b.setAttribute('aria-pressed',String(i<0))}
+  });
+}
+function paintPhoto(host,d){var pb=$('#photoBlock',host);if(pb)pb.innerHTML=photoBlockHTML(d)}
+async function handlePhoto(d,file,host){
+  d.qrState='checking';d.qr='';paintPhoto(host,d);
+  try{
+    var img=await loadImage(file);
+    var big=drawScaled(img,2200);
+    var qr=await decodeQR(big);
+    var small=drawScaled(img,1280);
+    var blob=await new Promise(function(r){small.toBlob(r,'image/jpeg',0.82)});
+    d.photo=blob||file;d.qr=qr||'';d.qrState=qr?'ok':'fail';
+    if(img.close)img.close();
+  }catch(e){d.photo=file;d.qr='';d.qrState='fail'}
+  d.photoChanged=true;
+  if(d.photoUrl&&d.photoUrl.indexOf('blob:')===0)try{URL.revokeObjectURL(d.photoUrl)}catch(e){}
+  d.photoUrl=URL.createObjectURL(d.photo);
+  paintPhoto(host,d);
+  if(d.qrState==='fail')toast('QR not readable. Try retaking the photo.');
+}
+
+/* ---------- Sheets ---------- */
+function openSheet(title,build,opts){
+  closeSheet();
+  var scrim=document.createElement('div');scrim.className='scrim';scrim.id='sheet';
+  scrim.innerHTML='<div class="sheet" role="dialog" aria-modal="true" aria-label="'+esc(title)+'"><div class="sheet-head"><h2>'+esc(title)+'</h2>'+((opts&&opts.locked)?'':'<button class="x" type="button" data-close aria-label="Close">×</button>')+'</div><div class="sheet-body"></div></div>';
+  document.body.appendChild(scrim);
+  if(!(opts&&opts.locked)){
+    scrim.addEventListener('click',function(e){if(e.target===scrim||e.target.closest('[data-close]'))closeSheet()});
+  }
+  build($('.sheet-body',scrim),scrim);
+}
+function closeSheet(){var s=$('#sheet');if(s)s.remove()}
+
+function openSetup(first){
+  openSheet(first?'Welcome':'Your details',function(body){
+    var dl=TEAM.length?'<datalist id="team">'+TEAM.map(function(n){return '<option value="'+esc(n)+'">'}).join('')+'</datalist>':'';
+    var acct=(!first&&session&&session.user)?'<div class="card"><p class="small muted" style="margin-bottom:8px">Signed in as '+esc(session.user.email||'')+'</p><button class="btn block danger" type="button" id="s-out">Sign out</button></div>':'';
+    body.innerHTML='<div class="stack">'+
+      '<p class="muted small">Your name goes on every lead you capture, so the team can see who met whom.</p>'+
+      '<div class="field"><label for="s-name">Your name</label><input type="text" id="s-name" autocomplete="name" autocapitalize="words" '+(TEAM.length?'list="team" ':'')+'value="'+esc(S.settings.name||'')+'"></div>'+dl+
+      '<div class="field"><label for="s-event">Show</label><input type="text" id="s-event" value="'+esc(S.settings.event||'')+'"></div>'+
+      '<button class="btn primary block" type="button" id="s-save">'+(first?'Start capturing':'Save details')+'</button>'+acct+
+    '</div>';
+    $('#s-save',body).onclick=function(){
+      var n=$('#s-name',body).value.trim(),ev=$('#s-event',body).value.trim();
+      if(!n){toast('Add your name first.');return}
+      S.settings.name=n;S.settings.event=ev||DEFAULT_EVENT;saveSettings();closeSheet();renderAll();
+    };
+    var out=$('#s-out',body);
+    if(out){
+      var armed=false;
+      out.onclick=async function(){
+        if(S.pending&&!armed){armed=true;out.textContent=S.pending+' lead(s) haven’t synced. Tap again to sign out';setTimeout(function(){armed=false;out.textContent='Sign out'},4000);return}
+        try{await sb.auth.signOut()}catch(e){}
+        closeSheet();
+      };
+    }
+  },{locked:!!first});
+}
+
+function openEdit(id){
+  var l=S.leads.find(function(x){return x.id===id});if(!l)return;
+  var d=draftFromLead(l);
+  openSheet(leadTitle(l),function(body){
+    body.innerHTML='<div class="stack"><div class="tags" style="margin:0"><span class="tag '+l.status+'">'+(l.status==='scanned'?'Scanned':'To scan')+'</span>'+
+      '<span class="small muted">Captured '+esc(timeLabel(l.createdAt))+(l.capturedBy?' by '+esc(l.capturedBy):'')+'</span></div>'+
+      '<div id="editForm"></div>'+
+      '<button class="btn primary block" type="button" id="e-save">Save changes</button>'+
+      '<button class="btn block" type="button" id="e-flip">'+(l.status==='scanned'?'Move back to rescan queue':'Mark as scanned')+'</button>'+
+      '<button class="btn danger block" type="button" id="e-del">Delete lead</button></div>';
+    var host=$('#editForm',body);host.innerHTML=formHTML(d);bindForm(host,d);
+    $('#e-save',body).onclick=async function(){
+      var nl=leadFromDraft(d);nl.status=l.status;nl.scanSource=l.scanSource;nl.scannedAt=l.scannedAt||null;nl.scannedBy=l.scannedBy||'';
+      await dbPut(nl);await refresh();closeSheet();renderAll();queueSync(100);toast('Changes saved.');
+    };
+    $('#e-flip',body).onclick=async function(){
+      var nl=leadFromDraft(d);
+      nl.status=l.status==='scanned'?'toscan':'scanned';
+      if(nl.status==='scanned'){nl.scanSource='Marked scanned manually';nl.scannedAt=Date.now();nl.scannedBy=S.settings.name||''}
+      else{nl.scanSource='';nl.scannedAt=null;nl.scannedBy=''}
+      await dbPut(nl);await refresh();closeSheet();renderAll();queueSync(100);toast(nl.status==='scanned'?'Marked as scanned.':'Moved back to the rescan queue.');
+    };
+    var del=$('#e-del',body),armed=false;
+    del.onclick=async function(){
+      if(!armed){armed=true;del.textContent='Tap again to delete for good';setTimeout(function(){armed=false;del.textContent='Delete lead'},3500);return}
+      if(l.synced||l.photoPath)await dbPut(Object.assign({},l,{deleted:true,dirty:true,updatedAt:Date.now()}));
+      else await dbDel(l.id);
+      await refresh();closeSheet();renderAll();queueSync(100);toast('Lead deleted.');
+    };
+  });
+}
+
+/* ---------- Views ---------- */
+function counts(){
+  var toscan=S.leads.filter(function(l){return l.status==='toscan'}).length;
+  var mine=S.leads.filter(function(l){return l.capturedBy&&l.capturedBy===S.settings.name}).length;
+  return {all:S.leads.length,toscan:toscan,scanned:S.leads.length-toscan,mine:mine};
+}
+function statsHTML(c){
+  return '<div class="stat"><b>'+c.all+'</b><span>Team leads</span></div><div class="stat"><b>'+c.mine+'</b><span>Yours</span></div><div class="stat"><b>'+c.toscan+'</b><span>To rescan</span></div>';
+}
+function renderCapture(){
+  if(!S.draft)S.draft=newDraft();
+  var d=S.draft,c=counts(),v=$('#view');
+  v.innerHTML='<div class="stack">'+
+    (S.persisted?'':'<div class="banner">This browser can’t keep photos after you close the page. Stay signed in and online so leads sync.</div>')+
+    '<div class="stats" id="stats">'+statsHTML(c)+'</div>'+
+    '<div class="card" id="capForm"></div>'+
+    '<button class="btn primary block" type="button" id="saveLead">Save lead</button>'+
+  '</div>';
+  var host=$('#capForm');host.innerHTML=formHTML(d);bindForm(host,d);
+  $('#saveLead').onclick=async function(){
+    if(d.qrState==='checking'){toast('Still checking the photo. One moment.');return}
+    if(!hasContent(d)){toast('Add a badge photo, a name or a note first.');return}
+    if(!S.settings.name){openSetup(true);return}
+    await dbPut(leadFromDraft(d));await refresh();
+    S.draft=newDraft();renderAll();v.scrollTop=0;queueSync(100);
+    toast(d.qrState==='fail'&&d.photo?'Saved. QR wasn’t readable, so check it later.':'Lead saved. Ready for the next badge.');
+  };
+}
+function renderLeads(){
+  var c=counts(),v=$('#view'),keep=v.scrollTop;
+  var list=S.leads.filter(function(l){
+    if(S.filter==='toscan'&&l.status!=='toscan')return false;
+    if(S.filter==='scanned'&&l.status!=='scanned')return false;
+    if(S.filter==='mine'&&!(l.capturedBy&&l.capturedBy===S.settings.name))return false;
+    if(S.q){var h=(l.name+' '+l.company+' '+l.notes+' '+l.capturedBy).toLowerCase();if(h.indexOf(S.q.toLowerCase())<0)return false}
+    return true;
+  });
+  var rows=list.map(function(l){
+    var r=RATINGS.find(function(x){return x.id===l.rating});
+    var sub=l.name&&l.company?l.company:(l.notes?trunc(l.notes,50):'');
+    var u=urlFor(l);
+    return '<button class="lead" type="button" data-open="'+l.id+'">'+
+      (u?'<img class="thumb" src="'+u+'" alt="">':'<div class="thumb"></div>')+
+      '<div class="body"><div class="nm">'+esc(leadTitle(l))+'</div><div class="sub">'+esc(sub||timeLabel(l.createdAt))+'</div>'+
+      '<div class="tags">'+(r?'<span class="tag" style="--c:'+r.c+'"><i></i>'+r.label+'</span>':'')+
+      '<span class="tag '+l.status+'">'+(l.status==='scanned'?'Scanned':'To scan')+'</span>'+
+      ((l.photo||l.photoPath)&&!l.qr?'<span class="tag" style="--c:var(--bad)"><i></i>No QR</span>':'')+
+      (l.dirty?'<span class="tag" style="--c:var(--warm)"><i></i>Syncing</span>':'')+
+      '<span class="small muted">'+esc(l.capturedBy?l.capturedBy.split(' ')[0]+' · ':'')+esc(timeLabel(l.createdAt))+'</span></div></div></button>';
+  }).join('');
+  v.innerHTML='<div class="stack"><div class="tools">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h2>Leads</h2><button class="btn sm primary" type="button" id="exportBtn"'+(c.all?'':' disabled')+'>Export CSV</button></div>'+
+    '<input type="text" id="search" placeholder="Search name, company, notes or who met them" value="'+esc(S.q)+'" aria-label="Search leads">'+
+    '<div class="filters">'+[['all','All ('+c.all+')'],['mine','Mine ('+c.mine+')'],['toscan','To scan ('+c.toscan+')'],['scanned','Scanned ('+c.scanned+')']].map(function(f){return '<button type="button" data-filter="'+f[0]+'" aria-pressed="'+(S.filter===f[0])+'">'+f[1]+'</button>'}).join('')+'</div></div>'+
+    (rows||'<div class="empty"><h3>'+(c.all?'No matches':'No leads yet')+'</h3><p class="small">'+(c.all?'Try a different search or filter.':'Photograph a badge on the Capture tab and it will show up here for the whole team.')+'</p></div>')+
+  '</div>';
+  v.scrollTop=keep;
+  $('#search').oninput=function(e){S.q=e.target.value;var pos=e.target.selectionStart;renderLeads();var s=$('#search');s.focus();try{s.setSelectionRange(pos,pos)}catch(x){}};
+  $$('[data-filter]').forEach(function(b){b.onclick=function(){S.filter=b.dataset.filter;renderLeads()}});
+  $$('[data-open]').forEach(function(b){b.onclick=function(){openEdit(b.dataset.open)}});
+  $('#exportBtn').onclick=openExport;
+}
+function queue(){return S.leads.filter(function(l){return l.status==='toscan'}).sort(function(a,b){return a.createdAt-b.createdAt})}
+function renderRescan(){
+  var q=queue(),v=$('#view');
+  if(!q.length){
+    v.innerHTML='<div class="empty"><h3>Nothing waiting to rescan</h3><p class="small">Badges anyone on the team photographs will queue here, ready to scan with the licensed scanner.</p></div>';
+    S.rqId=null;return;
+  }
+  var idx=S.rqId?q.findIndex(function(x){return x.id===S.rqId}):-1;
+  if(idx<0)idx=Math.min(S.rq,q.length-1);
+  S.rq=idx;S.rqId=q[idx].id;
+  var l=q[S.rq],canClean=qrDrawable(l.qr),u=urlFor(l);
+  var view=(canClean&&S.rqView==='clean')?'clean':'photo';
+  var r=RATINGS.find(function(x){return x.id===l.rating});
+  var note=noteForScanner(l);
+  v.innerHTML='<div class="stack">'+
+    '<div style="display:flex;justify-content:space-between;align-items:baseline"><h2>Rescan</h2><span class="small muted">Badge '+(S.rq+1)+' of '+q.length+' waiting</span></div>'+
+    '<div class="prog" aria-hidden="true"><i style="width:'+Math.round(((S.rq+1)/q.length)*100)+'%"></i></div>'+
+    (canClean?'<div class="filters"><button type="button" data-rv="clean" aria-pressed="'+(view==='clean')+'">Clean code</button><button type="button" data-rv="photo" aria-pressed="'+(view==='photo')+'">Original photo</button></div>':'')+
+    '<div class="qrbox" id="qrbox">'+(view==='clean'?'<canvas id="bigqr" aria-label="Badge QR code, redrawn for scanning"></canvas>':(u?'<img src="'+u+'" alt="Badge photo">':'<p class="small muted">'+((l.photo||l.photoPath)?'Photo is still loading. Check your connection.':'No photo saved for this lead.')+'</p>'))+'</div>'+
+    '<p class="small muted">'+(view==='clean'?'Turn your screen brightness up, then scan this code with the licensed scanner.':(l.qr?'Scanning the original photo.':'No QR was read from this photo, so scan the original.'))+'</p>'+
+    '<div><div style="font-weight:700;font-size:18px;font-family:var(--head)">'+esc(leadTitle(l))+'</div>'+(l.name&&l.company?'<div class="muted">'+esc(l.company)+'</div>':'')+
+    (l.capturedBy?'<div class="small muted">Met by '+esc(l.capturedBy)+'</div>':'')+
+    (r?'<div class="tags"><span class="tag" style="--c:'+r.c+'"><i></i>'+r.label+'</span></div>':'')+'</div>'+
+    (note?'<div class="notebox">'+esc(note)+'</div><button class="btn block" type="button" id="copyNote">Copy notes for the scanner</button>':'')+
+    '<div class="row2"><button class="btn" type="button" id="skip"'+(q.length<2?' disabled':'')+'>Skip</button><button class="btn primary" type="button" id="done">Scanned, next</button></div>'+
+  '</div>';
+  if(view==='clean'){var cv=$('#bigqr');if(!drawQR(cv,l.qr)){S.rqView='photo';renderRescan();return}}
+  $$('[data-rv]').forEach(function(b){b.onclick=function(){S.rqView=b.dataset.rv;renderRescan()}});
+  var cn=$('#copyNote');if(cn)cn.onclick=async function(){toast(await copyText(note)?'Notes copied.':'Couldn’t copy. Select the text instead.')};
+  $('#skip').onclick=function(){S.rq=(S.rq+1)%q.length;S.rqId=q[S.rq].id;renderRescan();v.scrollTop=0};
+  $('#done').onclick=async function(){
+    var now=Date.now();
+    var nl=Object.assign({},l,{status:'scanned',scanSource:'Rescanned from photo',scannedAt:now,scannedBy:S.settings.name||'',updatedAt:now,dirty:true});
+    await dbPut(nl);await refresh();S.rqId=null;renderAll();v.scrollTop=0;queueSync(100);
+    toast(queue().length?'Marked as scanned.':'All caught up. Nothing left to rescan.');
+  };
+}
+
+/* ---------- Export ---------- */
+function csvCell(s){s=String(s==null?'':s);return /[",\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
+function buildCSV(leads){
+  var cols=['First Name','Last Name','Company Name','Lead Rating','Interests','Notes','Show','Captured By','Captured At','Badge QR Data','Printed Badge Code','Scanner Status'];
+  var rows=[cols.map(csvCell).join(',')];
+  leads.slice().sort(function(a,b){return a.createdAt-b.createdAt}).forEach(function(l){
+    var parts=(l.name||'').trim().split(/\s+/),first=parts.shift()||'',last=parts.join(' ');
+    rows.push([first,last,l.company,cap(l.rating),(l.interests||[]).join('; '),l.notes,l.event,l.capturedBy,new Date(l.createdAt).toISOString(),l.qr,l.badgeId,l.status==='scanned'?(l.scanSource||'Scanned'):'Not yet scanned'].map(csvCell).join(','));
+  });
+  return '\uFEFF'+rows.join('\r\n');
+}
+function slug(s){return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'')}
+async function saveCSV(fn,csv){
+  var blob=new Blob([csv],{type:'text/csv'});
+  try{
+    var f=new File([blob],fn,{type:'text/csv'});
+    if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:fn});return 'shared'}
+  }catch(e){if(e&&e.name==='AbortError')return 'cancelled'}
+  try{
+    var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fn;document.body.appendChild(a);a.click();
+    setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},1500);return 'downloaded';
+  }catch(e){return 'fail'}
+}
+function openExport(){
+  var all=S.leads,fresh=all.filter(function(l){return !l.exportedAt});
+  openSheet('Export leads',function(body){
+    body.innerHTML='<div class="stack">'+
+      '<p class="muted small">Exports everyone’s leads as a CSV you can import into HubSpot. “Not yet exported” is shared across the team, so nobody exports the same lead twice.</p>'+
+      '<button class="btn primary block" type="button" id="x-new"'+(fresh.length?'':' disabled')+'>Not yet exported ('+fresh.length+')</button>'+
+      '<button class="btn block" type="button" id="x-all">All leads ('+all.length+')</button>'+
+      '<div id="x-fallback"></div></div>';
+    async function mark(set){
+      var now=Date.now();
+      for(var i=0;i<set.length;i++){await dbPut(Object.assign({},set[i],{exportedAt:now,updatedAt:now,dirty:true}))}
+      await refresh();queueSync(100);
+    }
+    function showCopy(set,csv){
+      var fb=$('#x-fallback',body);
+      fb.innerHTML='<div class="stack"><p class="small muted">Couldn’t save a file here. Copy the CSV and paste it into a note or email to yourself.</p><textarea class="csv" readonly>'+esc(csv)+'</textarea><button class="btn block" type="button" id="x-copy">Copy CSV</button></div>';
+      $('#x-copy',fb).onclick=async function(){var ok=await copyText(csv);if(ok){await mark(set);toast('CSV copied.')}else toast('Couldn’t copy. Select the text instead.')};
+    }
+    function run(set){
+      if(!set.length)return;
+      var csv=buildCSV(set),fn='leads-'+(slug(S.settings.event)||'show')+'-'+new Date().toISOString().slice(0,10)+'.csv';
+      saveCSV(fn,csv).then(async function(r){
+        if(r==='cancelled')return;
+        if(r==='fail'){showCopy(set,csv);return}
+        await mark(set);closeSheet();renderAll();toast(r==='shared'?'Export shared.':'Export saved.');
+      });
+    }
+    $('#x-new',body).onclick=function(){run(fresh)};
+    $('#x-all',body).onclick=function(){run(all)};
+  });
+}
+
+/* ---------- Sign in ---------- */
+function showLogin(){
+  if($('#login'))return;
+  var el=document.createElement('div');el.id='login';el.className='login';
+  el.innerHTML='<div class="login-in"><div class="brand" style="margin-bottom:18px">Greenspan XP<small>Lead capture</small></div><div id="loginBody"></div></div>';
+  document.body.appendChild(el);
+  loginEmailStep();
+}
+function hideLogin(){var l=$('#login');if(l)l.remove()}
+function loginMsg(text,bad){var m=$('#l-msg');if(m){m.textContent=text||'';m.className='small '+(bad?'msg-bad':'msg-ok')}}
+function niceAuthError(e){
+  var t=errText(e);
+  if(/invalid login credentials/i.test(t))return 'Email or password is wrong.';
+  if(/signups? not allowed|not allowed for otp|user not found/i.test(t))return 'That email isn’t on the team list yet.';
+  if(/rate limit|too many|seconds/i.test(t))return 'Too many emails sent. Wait a minute, then try again.';
+  if(/expired|invalid/i.test(t))return 'That code didn’t work. Check it, or ask for a new one.';
+  return t||'Something went wrong. Try again.';
+}
+function loginLinkStep(){
+  var b=$('#loginBody');if(!b)return;
+  b.innerHTML='<div class="stack"><h2>Email sign-in</h2><p class="muted small">Use your work email. We’ll email you a sign-in link and a code.</p>'+
+    '<div class="field"><label for="l-email">Email</label><input type="email" id="l-email" autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false" value="'+esc(S.settings.email||'')+'"></div>'+
+    '<button class="btn primary block" id="l-send" type="button">Email me a sign-in link</button>'+
+    '<p class="small" id="l-msg" role="status"></p>'+
+    '<button class="link-btn" id="l-have" type="button">I already have a code</button> <button class="link-btn" id="l-pw" type="button">Use a password instead</button></div>';
+  if(!sb)loginMsg('Sign-in isn’t available offline. Connect to the internet and reload.',true);
+  $('#l-send').onclick=async function(){
+    var em=$('#l-email').value.trim().toLowerCase();
+    if(!em||em.indexOf('@')<1){loginMsg('Enter your email address.',true);return}
+    if(!sb){return}
+    var btn=$('#l-send');btn.disabled=true;loginMsg('Sending…');
+    try{
+      var r=await sb.auth.signInWithOtp({email:em,options:{shouldCreateUser:false,emailRedirectTo:location.origin+location.pathname}});
+      if(r.error)throw r.error;
+      S.settings.email=em;saveSettings();loginCodeStep(em);
+    }catch(e){loginMsg(niceAuthError(e),true);btn.disabled=false}
+  };
+  $('#l-have').onclick=function(){var em=$('#l-email').value.trim().toLowerCase();if(!em){loginMsg('Enter your email first.',true);return}S.settings.email=em;saveSettings();loginCodeStep(em)};
+  $('#l-pw').onclick=loginEmailStep;
+}
+function loginEmailStep(){
+  var b=$('#loginBody');if(!b)return;
+  b.innerHTML='<div class="stack"><h2>Sign in</h2><p class="muted small">Use the email and password you were given.</p>'+
+    '<div class="field"><label for="l-email">Email</label><input type="email" id="l-email" autocomplete="username" inputmode="email" autocapitalize="off" spellcheck="false" value="'+esc(S.settings.email||'')+'"></div>'+
+    '<div class="field"><label for="l-pass">Password</label><input type="password" id="l-pass" autocomplete="current-password"></div>'+
+    '<button class="btn primary block" id="l-signin" type="button">Sign in</button>'+
+    '<p class="small" id="l-msg" role="status"></p>'+
+    '<button class="link-btn" id="l-link" type="button">Email me a sign-in link instead</button></div>';
+  if(!sb)loginMsg('Sign-in isn’t available offline. Connect to the internet and reload.',true);
+  async function go(){
+    var em=$('#l-email').value.trim().toLowerCase(),pw=$('#l-pass').value;
+    if(!em||em.indexOf('@')<1){loginMsg('Enter your email address.',true);return}
+    if(!pw){loginMsg('Enter your password.',true);return}
+    if(!sb)return;
+    var btn=$('#l-signin');btn.disabled=true;loginMsg('Signing in…');
+    try{
+      var r=await sb.auth.signInWithPassword({email:em,password:pw});
+      if(r.error)throw r.error;
+      S.settings.email=em;saveSettings();
+    }catch(e){loginMsg(niceAuthError(e),true);btn.disabled=false}
+  }
+  $('#l-signin').onclick=go;
+  $('#l-pass').onkeydown=function(e){if(e.key==='Enter')go()};
+  $('#l-link').onclick=loginLinkStep;
+}
+function loginCodeStep(em){
+  var b=$('#loginBody');if(!b)return;
+  b.innerHTML='<div class="stack"><h2>Check your email</h2><p class="muted small">We sent a link to '+esc(em)+'. On an iPhone, using the home screen app, enter the code from that email here instead of tapping the link.</p>'+
+    '<div class="field"><label for="l-code">Code from the email</label><input type="text" id="l-code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="123456"></div>'+
+    '<button class="btn primary block" id="l-verify" type="button">Sign in</button>'+
+    '<p class="small" id="l-msg" role="status"></p>'+
+    '<button class="link-btn" id="l-back" type="button">Use a different email</button></div>';
+  $('#l-back').onclick=loginLinkStep;
+  $('#l-verify').onclick=async function(){
+    var code=$('#l-code').value.replace(/\s+/g,'');
+    if(code.length<6){loginMsg('Enter the code from the email.',true);return}
+    var btn=$('#l-verify');btn.disabled=true;loginMsg('Checking…');
+    try{
+      var r=await sb.auth.verifyOtp({email:em,token:code,type:'email'});
+      if(r.error)throw r.error;
+    }catch(e){loginMsg(niceAuthError(e),true);btn.disabled=false}
+  };
+}
+function afterLogin(){
+  hideLogin();
+  if(!started){started=true;startRealtime()}
+  queueSync(50);
+  if(!S.settings.name&&!$('#sheet'))openSetup(true);
+  paintSync();
+}
+
+/* ---------- Shell ---------- */
+var wl=null;
+async function wake(on){
+  try{
+    if(on){if('wakeLock' in navigator&&!wl){wl=await navigator.wakeLock.request('screen');wl.addEventListener('release',function(){wl=null})}}
+    else if(wl){await wl.release();wl=null}
+  }catch(e){}
+}
+document.addEventListener('visibilitychange',function(){
+  if(document.visibilityState==='visible'){
+    if(S.tab==='rescan')wake(true);
+    queueSync(200);
+  }
+});
+window.addEventListener('online',function(){paintSync();queueSync(300)});
+window.addEventListener('offline',paintSync);
+setInterval(function(){if(document.visibilityState==='visible')queueSync(0)},45000);
+
+function paintChrome(){
+  var n=S.settings.name||'';
+  $('#whoI').textContent=n?n.charAt(0).toUpperCase():'?';
+  $('#whoT').textContent=n?(n+' · '+(S.settings.event||'')):'Set up';
+  var c=counts();
+  $('#bLeads').textContent=c.all?String(c.all):'';
+  $('#bScan').textContent=c.toscan?String(c.toscan):'';
+  $$('nav button').forEach(function(b){if(b.dataset.tab===S.tab)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});
+  paintSync();
+}
+function renderAll(){
+  paintChrome();
+  if(S.tab==='capture')renderCapture();else if(S.tab==='leads')renderLeads();else renderRescan();
+  wake(S.tab==='rescan');
+}
+/* Called after a background sync: refresh numbers without disturbing what the person is typing. */
+function repaint(){
+  paintChrome();
+  var st=$('#stats');if(st&&S.tab==='capture')st.innerHTML=statsHTML(counts());
+  if($('#sheet'))return;
+  var ae=document.activeElement;
+  if(S.tab==='leads'&&!(ae&&ae.id==='search'))renderLeads();
+  else if(S.tab==='rescan')renderRescan();
+}
+$$('nav button').forEach(function(b){b.onclick=function(){
+  if(S.tab===b.dataset.tab&&b.dataset.tab!=='capture')return;
+  S.tab=b.dataset.tab;if(S.tab==='rescan'){S.rq=0;S.rqId=null}renderAll();$('#view').scrollTop=0;
+}});
+$('#who').onclick=function(){openSetup(false)};
+$('#syncBtn').onclick=function(){sync.err='';queueSync(0);toast(session?'Syncing…':'Sign in to sync.')};
+
+async function init(){
+  db=await openDB();
+  if(!db)S.persisted=false;
+  try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}
+  await refresh();
+  renderAll();
+  try{
+    if(window.supabase&&window.supabase.createClient){
+      sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+    }
+  }catch(e){sb=null}
+  paintSync();
+  if(!sb){if(!S.settings.name)openSetup(true);return}
+  sb.auth.onAuthStateChange(function(ev,s){
+    setTimeout(function(){
+      if(ev==='SIGNED_OUT'){session=null;stopRealtime();started=false;showLogin();paintSync()}
+      else if(ev==='SIGNED_IN'&&s){session=s;afterLogin()}
+      else if(s){session=s}
+    },0);
+  });
+  try{
+    var g=await sb.auth.getSession();
+    session=(g&&g.data&&g.data.session)||null;
+  }catch(e){session=null}
+  if(session)afterLogin();
+  else{
+    showLogin();
+  }
+  if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)){navigator.serviceWorker.register('sw.js').catch(function(){})}
+}
+init();
+})();
+</script>
+</body>
+</html>
