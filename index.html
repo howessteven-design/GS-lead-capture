@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- GSXP Lead Capture | VERSION 1.5 | 14 Nov 2026 | memory-safe photo reading, version label -->
+<!-- GSXP Lead Capture | VERSION 1.6 | 14 Nov 2026 | ZXing second reader, full-resolution decoding, debug share button -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -214,6 +214,7 @@ textarea.csv{min-height:180px;font-family:ui-monospace,Menlo,monospace;font-size
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/zxing-wasm@3.1.6/dist/iife/reader/index.js" crossorigin="anonymous"></script>
 <script>
 (function(){
 'use strict';
@@ -222,7 +223,7 @@ textarea.csv{min-height:180px;font-family:ui-monospace,Menlo,monospace;font-size
 var SUPABASE_URL='https://zhyiakcgajywbnjzqjth.supabase.co';
 var SUPABASE_KEY='sb_publishable_mJPv05SVeyssDTArb_ZZjg_0E4lMaS1';   // publishable key: safe in the browser, protected by row level security
 var BUCKET='badge-photos';
-var VERSION='1.5';
+var VERSION='1.6';
 var TEAM = ['Brook Tuffin','Dan Reed','Jamie Davenport','Max Huber','Nathaly Riano-Gomez','Rod Morton','Steven Howes'];  // Sales + Support staff from Events HQ
 var INTERESTS = ['Puttify','Adventure Golf','Modular Golf','Signature Greens','Aerial courses','Play environments','Themed environments','FEC delivery','Stadium and arena'];
 var RATINGS = [{id:'hot',label:'Hot',c:'var(--hot)'},{id:'warm',label:'Warm',c:'var(--warm)'},{id:'cold',label:'Cold',c:'var(--cold)'}];
@@ -446,10 +447,24 @@ async function loadImage(file){
   });
 }
 function dims(img){return {w:img.width||img.naturalWidth,h:img.height||img.naturalHeight}}
-function drawScaled(img,maxSide){
-  var d=dims(img),s=Math.min(1,maxSide/Math.max(d.w,d.h));
-  var c=document.createElement('canvas');c.width=Math.max(1,Math.round(d.w*s));c.height=Math.max(1,Math.round(d.h*s));
-  c.getContext('2d').drawImage(img,0,0,c.width,c.height);return c;
+function smoothCtx(c){var x=c.getContext('2d',{willReadFrequently:true});x.imageSmoothingEnabled=true;x.imageSmoothingQuality='high';return x}
+function drawScaled(img,maxSide,exact){
+  var d=dims(img),tw=d.w,th=d.h,src=img,tmp=null,c;
+  if(exact){
+    var s=Math.min(1,maxSide/Math.max(d.w,d.h));
+    c=document.createElement('canvas');c.width=Math.max(1,Math.round(d.w*s));c.height=Math.max(1,Math.round(d.h*s));
+    smoothCtx(c).drawImage(img,0,0,c.width,c.height);return c;
+  }
+  // Shrink by exactly half each step. This keeps fine detail far better than one big jump, which matters on iPhone browsers.
+  while(Math.max(tw,th)>maxSide){
+    var nw=Math.max(1,Math.round(tw/2)),nh=Math.max(1,Math.round(th/2)),c2=document.createElement('canvas');
+    c2.width=nw;c2.height=nh;smoothCtx(c2).drawImage(src,0,0,nw,nh);
+    if(tmp){tmp.width=tmp.height=0}
+    tmp=c2;src=c2;tw=nw;th=nh;
+  }
+  c=document.createElement('canvas');c.width=tw;c.height=th;smoothCtx(c).drawImage(src,0,0,tw,th);
+  if(tmp){tmp.width=tmp.height=0}
+  return c;
 }
 async function detectNative(canvas){
   if(!('BarcodeDetector' in window))return null;
@@ -498,13 +513,59 @@ function enhance(src,smooth){
   for(i=0;i<n;i++){var v=(g[i]-lo)*255/span;v=v<0?0:v>255?255:v;d[i*4]=d[i*4+1]=d[i*4+2]=v;d[i*4+3]=255}
   cx.putImageData(id,0,0);return c;
 }
-async function decodeQR(canvas){
+/* ZXing (the library most scanner apps use) as a stronger second reader. Loaded from the CDN, cached for offline use. */
+var ZX_BASE='https://cdn.jsdelivr.net/npm/zxing-wasm@3.1.6/dist/reader/';
+var zxReady=null,zxStatus='not used';
+function loadZX(){
+  if(zxReady)return zxReady;
+  zxReady=(async function(){
+    if(!window.ZXingWASM)throw new Error('library not loaded');
+    await window.ZXingWASM.prepareZXingModule({overrides:{locateFile:function(p){return ZX_BASE+p}},fireImmediately:true});
+    zxStatus='ready';return true;
+  })().catch(function(e){zxStatus='unavailable ('+errText(e)+')';throw e});
+  return zxReady;
+}
+async function zxingRead(src){
+  try{
+    await loadZX();
+    var id=(typeof ImageData!=='undefined'&&src instanceof ImageData)?src:src.getContext('2d',{willReadFrequently:true}).getImageData(0,0,src.width,src.height);
+    var r=await window.ZXingWASM.readBarcodes(id,{formats:['QRCode'],tryHarder:true,tryRotate:true,tryInvert:true,tryDownscale:true,maxNumberOfSymbols:1});
+    if(r&&r.length&&r[0].isValid&&r[0].text){zxStatus='ready, read a code';return r[0].text}
+  }catch(e){if(zxStatus==='ready'||zxStatus==='not used')zxStatus='error ('+errText(e)+')'}
+  return null;
+}
+/* Crops taken straight from the full-size photo, so nothing is lost to shrinking. */
+async function scanFullRes(full){
+  var d=dims(full),W=d.w,H=d.h;
+  var regions=[[.45,.5,.55,.5],[.3,.4,.7,.6],[0,.45,1,.55]];
+  var t=document.createElement('canvas'),cx=t.getContext('2d',{willReadFrequently:true}),found=null;
+  try{
+    for(var i=0;i<regions.length&&!found;i++){
+      var x=Math.round(regions[i][0]*W),y=Math.round(regions[i][1]*H),w=Math.round(regions[i][2]*W),h=Math.round(regions[i][3]*H);
+      var scales=[1,.6];
+      for(var j=0;j<scales.length&&!found;j++){
+        t.width=Math.max(1,Math.round(w*scales[j]));t.height=Math.max(1,Math.round(h*scales[j]));
+        cx.imageSmoothingQuality='high';cx.drawImage(full,x,y,w,h,0,0,t.width,t.height);
+        var id=cx.getImageData(0,0,t.width,t.height);
+        var res=window.jsQR?window.jsQR(id.data,t.width,t.height,{inversionAttempts:'attemptBoth'}):null;
+        if(res&&res.data)found=res.data;
+        if(!found)found=await zxingRead(id);
+        id=null;await tick();
+      }
+    }
+  }finally{t.width=t.height=0}
+  return found;
+}
+async function decodeQR(canvas,full){
   var r=await detectNative(canvas);if(r)return r;
   r=await scanRegions(canvas);if(r)return r;
+  r=await zxingRead(canvas);if(r)return r;
+  if(full){r=await scanFullRes(full);if(r)return r}
   for(var k=0;k<2;k++){
     var pc=enhance(canvas,k===1);await tick();
     r=await detectNative(pc);
     if(!r)r=await scanRegions(pc);
+    if(!r)r=await zxingRead(pc);
     pc.width=pc.height=0;
     if(r)return r;
   }
@@ -563,7 +624,7 @@ function photoBlockHTML(d){
     var ok=d.qrState==='ok';
     return '<div class="photo-row"><img class="thumb" src="'+d.photoUrl+'" alt="Badge photo"><div class="photo-info">'+
       '<p class="status '+(ok?'ok':'bad')+'"><span class="dot"></span>'+(ok?'QR code read':'Can’t read the QR code')+'</p>'+
-      (ok?'<p class="small mono">'+esc(trunc(d.qr,40))+'</p>':'<p class="small muted">Retake it with the badge flat, filling the frame, and no glare on the QR code. You can still save this one.</p>'+(d.diag?'<p class="small muted mono">'+esc(d.diag)+'</p>':''))+
+      (ok?'<p class="small mono">'+esc(trunc(d.qr,40))+'</p>':'<p class="small muted">Retake it with the badge flat, filling the frame, and no glare on the QR code. You can still save this one.</p>'+(d.diag?'<p class="small muted mono">'+esc(d.diag)+'</p>':'')+(d.debugFiles?'<button type="button" class="btn ghost sm" data-debug>Share this photo for debugging</button>':''))+
       '<label class="btn ghost sm">Retake photo<input class="vh" type="file" accept="image/*" capture="environment" data-photo></label></div></div>';
   }
   return '<label class="capture-btn"><svg viewBox="0 0 24 24"><path d="M4 8h3l1.6-2.4h6.8L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.6"/></svg><div><b>Photograph the badge</b><span>Fill the frame with the badge so the QR code is sharp</span></div><input class="vh" type="file" accept="image/*" capture="environment" data-photo></label>'+
@@ -599,6 +660,7 @@ function bindForm(host,d){
     if(b.dataset.rate){d.rating=d.rating===b.dataset.rate?'':b.dataset.rate;$$('[data-rate]',host).forEach(function(x){x.setAttribute('aria-pressed',String(x.dataset.rate===d.rating))})}
     else if(b.dataset.int!==undefined){var i=d.interests.indexOf(b.dataset.int);if(i>-1)d.interests.splice(i,1);else d.interests.push(b.dataset.int);b.setAttribute('aria-pressed',String(i<0))}
     else if(b.hasAttribute('data-mic')){toggleMic(b,host,d)}
+    else if(b.hasAttribute('data-debug')){shareDebug(d)}
   });
 }
 function paintPhoto(host,d){var pb=$('#photoBlock',host);if(pb)pb.innerHTML=photoBlockHTML(d)}
@@ -612,20 +674,25 @@ function blankCheck(canvas){
   }catch(e){return true}
 }
 async function handlePhoto(d,file,host){
-  d.qrState='checking';d.qr='';d.diag='';paintPhoto(host,d);
+  d.qrState='checking';d.qr='';d.diag='';d.debugFiles=null;paintPhoto(host,d);
   var img=null,big=null,small=null;
+  zxStatus='not used';
   try{
     img=await loadImage(file);
     var dm=dims(img);
     big=drawScaled(img,2200);
-    small=drawScaled(img,1280);
-    if(img.close){img.close();img=null}                       // give the full-size bitmap back to the browser straight away
+    small=drawScaled(img,1280,true);
     var blank=blankCheck(big);
-    d.diag=(('BarcodeDetector' in window)?'native scanner':'no native scanner')+' · '+(window.jsQR?'jsQR loaded':'jsQR NOT loaded')+' · '+dm.w+'x'+dm.h+' → '+big.width+'x'+big.height+' · pixels '+(blank?'BLANK':'ok');
-    var qr=blank?null:await decodeQR(big);
+    var qr=blank?null:await decodeQR(big,img);
+    d.diag=(('BarcodeDetector' in window)?'native scanner':'no native scanner')+' · '+(window.jsQR?'jsQR loaded':'jsQR NOT loaded')+' · zxing '+zxStatus+' · '+dm.w+'x'+dm.h+' → '+big.width+'x'+big.height+' · pixels '+(blank?'BLANK':'ok');
     var blob=await new Promise(function(r){small.toBlob(r,'image/jpeg',0.82)});
     d.photo=blob||file;d.qr=qr||'';d.qrState=qr?'ok':'fail';
-  }catch(e){d.photo=file;d.qr='';d.qrState='fail';d.diag='error: '+errText(e)}
+    if(!qr){
+      var dbg=await new Promise(function(r){big.toBlob(r,'image/jpeg',0.85)});
+      d.debugFiles=[file];
+      if(dbg)d.debugFiles.push(new File([dbg],'scanner-view.jpg',{type:'image/jpeg'}));
+    }
+  }catch(e){d.photo=file;d.qr='';d.qrState='fail';d.diag='error: '+errText(e);d.debugFiles=[file]}
   finally{
     if(big){big.width=big.height=0}
     if(small){small.width=small.height=0}
@@ -636,6 +703,13 @@ async function handlePhoto(d,file,host){
   d.photoUrl=URL.createObjectURL(d.photo);
   paintPhoto(host,d);
   if(d.qrState==='fail')toast('QR not readable. Try retaking the photo.');
+}
+async function shareDebug(d){
+  try{
+    var files=(d.debugFiles||[]).map(function(f,i){return f.name&&/\.(jpe?g|png|heic)$/i.test(f.name)?f:new File([f],'badge-photo-'+i+'.jpg',{type:f.type||'image/jpeg'})});
+    if(navigator.canShare&&navigator.canShare({files:files})){await navigator.share({files:files,title:'Badge photo that would not scan'});return}
+    toast('Sharing isn’t available here.');
+  }catch(e){if(!e||e.name!=='AbortError')toast('Couldn’t share the photo.')}
 }
 
 /* ---------- Dictation (browser speech recognition: Android Chrome, desktop Chrome/Edge, some iPhones) ---------- */
@@ -1060,6 +1134,7 @@ async function init(){
     }
   }catch(e){sb=null}
   paintSync();
+  setTimeout(function(){if(navigator.onLine)loadZX().catch(function(){})},4000);
   if(!sb){if(!S.settings.name)openSetup(true);return}
   sb.auth.onAuthStateChange(function(ev,s){
     setTimeout(function(){
