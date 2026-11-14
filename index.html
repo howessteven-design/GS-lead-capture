@@ -449,10 +449,12 @@ function drawScaled(img,maxSide){
   var c=document.createElement('canvas');c.width=Math.max(1,Math.round(d.w*s));c.height=Math.max(1,Math.round(d.h*s));
   c.getContext('2d').drawImage(img,0,0,c.width,c.height);return c;
 }
-async function decodeQR(canvas){
-  if('BarcodeDetector' in window){
-    try{var bd=new BarcodeDetector({formats:['qr_code']});var r=await bd.detect(canvas);if(r&&r.length&&r[0].rawValue)return r[0].rawValue}catch(e){}
-  }
+async function detectNative(canvas){
+  if(!('BarcodeDetector' in window))return null;
+  try{var bd=new BarcodeDetector({formats:['qr_code']});var r=await bd.detect(canvas);if(r&&r.length&&r[0].rawValue)return r[0].rawValue}catch(e){}
+  return null;
+}
+async function scanRegions(canvas){
   if(!window.jsQR)return null;
   var W=canvas.width,H=canvas.height;
   var regions=[[0,0,W,H],[W*.45,H*.5,W*.55,H*.5],[W*.35,H*.4,W*.65,H*.6],[0,H*.45,W,H*.55],[W*.5,H*.6,W*.5,H*.4]];
@@ -462,12 +464,41 @@ async function decodeQR(canvas){
     for(var j=0;j<scales.length;j++){
       var sc=scales[j],t=document.createElement('canvas');
       t.width=Math.max(1,Math.round(w*sc));t.height=Math.max(1,Math.round(h*sc));
-      var cx=t.getContext('2d');cx.drawImage(canvas,x,y,w,h,0,0,t.width,t.height);
+      var cx=t.getContext('2d',{willReadFrequently:true});cx.drawImage(canvas,x,y,w,h,0,0,t.width,t.height);
       var id=cx.getImageData(0,0,t.width,t.height);
       var res=window.jsQR(id.data,t.width,t.height,{inversionAttempts:'attemptBoth'});
       if(res&&res.data)return res.data;
       await tick();
     }
+  }
+  return null;
+}
+/* Second and third attempts for hard photos: stretch the contrast, then smooth out noise and stretch again. */
+function enhance(src,smooth){
+  var w=src.width,h=src.height,c=document.createElement('canvas');c.width=w;c.height=h;
+  var cx=c.getContext('2d',{willReadFrequently:true});cx.drawImage(src,0,0);
+  var id=cx.getImageData(0,0,w,h),d=id.data,n=w*h,g=new Uint8ClampedArray(n),i;
+  for(i=0;i<n;i++)g[i]=(d[i*4]*77+d[i*4+1]*150+d[i*4+2]*29)>>8;
+  if(smooth){
+    var o=new Uint8ClampedArray(n);
+    for(var y=1;y<h-1;y++){var r=y*w;for(var x=1;x<w-1;x++){var p=r+x;o[p]=(g[p-w-1]+g[p-w]+g[p-w+1]+g[p-1]+g[p]+g[p+1]+g[p+w-1]+g[p+w]+g[p+w+1])/9}}
+    g=o;
+  }
+  var hist=new Uint32Array(256);for(i=0;i<n;i++)hist[g[i]]++;
+  var lo=0,hi=255,acc=0;
+  for(i=0;i<256;i++){acc+=hist[i];if(acc>=n*0.02){lo=i;break}}
+  acc=0;for(i=255;i>=0;i--){acc+=hist[i];if(acc>=n*0.02){hi=i;break}}
+  var span=Math.max(20,hi-lo);
+  for(i=0;i<n;i++){var v=(g[i]-lo)*255/span;v=v<0?0:v>255?255:v;d[i*4]=d[i*4+1]=d[i*4+2]=v;d[i*4+3]=255}
+  cx.putImageData(id,0,0);return c;
+}
+async function decodeQR(canvas){
+  var r=await detectNative(canvas);if(r)return r;
+  r=await scanRegions(canvas);if(r)return r;
+  for(var k=0;k<2;k++){
+    var pc=enhance(canvas,k===1);await tick();
+    r=await detectNative(pc);if(r)return r;
+    r=await scanRegions(pc);if(r)return r;
   }
   return null;
 }
@@ -524,7 +555,7 @@ function photoBlockHTML(d){
     var ok=d.qrState==='ok';
     return '<div class="photo-row"><img class="thumb" src="'+d.photoUrl+'" alt="Badge photo"><div class="photo-info">'+
       '<p class="status '+(ok?'ok':'bad')+'"><span class="dot"></span>'+(ok?'QR code read':'Can’t read the QR code')+'</p>'+
-      (ok?'<p class="small mono">'+esc(trunc(d.qr,40))+'</p>':'<p class="small muted">Retake it with the badge flat, filling the frame, and no glare on the QR code. You can still save this one.</p>')+
+      (ok?'<p class="small mono">'+esc(trunc(d.qr,40))+'</p>':'<p class="small muted">Retake it with the badge flat, filling the frame, and no glare on the QR code. You can still save this one.</p>'+(d.diag?'<p class="small muted mono">'+esc(d.diag)+'</p>':''))+
       '<label class="btn ghost sm">Retake photo<input class="vh" type="file" accept="image/*" capture="environment" data-photo></label></div></div>';
   }
   return '<label class="capture-btn"><svg viewBox="0 0 24 24"><path d="M4 8h3l1.6-2.4h6.8L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.6"/></svg><div><b>Photograph the badge</b><span>Fill the frame with the badge so the QR code is sharp</span></div><input class="vh" type="file" accept="image/*" capture="environment" data-photo></label>'+
@@ -568,12 +599,13 @@ async function handlePhoto(d,file,host){
   try{
     var img=await loadImage(file);
     var big=drawScaled(img,2200);
+    d.diag=(('BarcodeDetector' in window)?'native scanner':'no native scanner')+' · '+(window.jsQR?'jsQR loaded':'jsQR NOT loaded')+' · '+big.width+'x'+big.height;
     var qr=await decodeQR(big);
     var small=drawScaled(img,1280);
     var blob=await new Promise(function(r){small.toBlob(r,'image/jpeg',0.82)});
     d.photo=blob||file;d.qr=qr||'';d.qrState=qr?'ok':'fail';
     if(img.close)img.close();
-  }catch(e){d.photo=file;d.qr='';d.qrState='fail'}
+  }catch(e){d.photo=file;d.qr='';d.qrState='fail';d.diag='error: '+errText(e)}
   d.photoChanged=true;
   if(d.photoUrl&&d.photoUrl.indexOf('blob:')===0)try{URL.revokeObjectURL(d.photoUrl)}catch(e){}
   d.photoUrl=URL.createObjectURL(d.photo);
@@ -764,7 +796,9 @@ function renderRescan(){
   var idx=S.rqId?q.findIndex(function(x){return x.id===S.rqId}):-1;
   if(idx<0)idx=Math.min(S.rq,q.length-1);
   S.rq=idx;S.rqId=q[idx].id;
-  var l=q[S.rq],canClean=qrDrawable(l.qr),u=urlFor(l);
+  var l=q[S.rq],qrText=l.qr||'',fromCode=false;
+  if(!qrText&&l.badgeId){qrText=l.badgeId;fromCode=true}
+  var canClean=qrDrawable(qrText),u=urlFor(l);
   var view=(canClean&&S.rqView==='clean')?'clean':'photo';
   var r=RATINGS.find(function(x){return x.id===l.rating});
   var note=noteForScanner(l);
@@ -773,14 +807,14 @@ function renderRescan(){
     '<div class="prog" aria-hidden="true"><i style="width:'+Math.round(((S.rq+1)/q.length)*100)+'%"></i></div>'+
     (canClean?'<div class="filters"><button type="button" data-rv="clean" aria-pressed="'+(view==='clean')+'">Clean code</button><button type="button" data-rv="photo" aria-pressed="'+(view==='photo')+'">Original photo</button></div>':'')+
     '<div class="qrbox" id="qrbox">'+(view==='clean'?'<canvas id="bigqr" aria-label="Badge QR code, redrawn for scanning"></canvas>':(u?'<img src="'+u+'" alt="Badge photo">':'<p class="small muted">'+((l.photo||l.photoPath)?'Photo is still loading. Check your connection.':'No photo saved for this lead.')+'</p>'))+'</div>'+
-    '<p class="small muted">'+(view==='clean'?'Turn your screen brightness up, then scan this code with the licensed scanner.':(l.qr?'Scanning the original photo.':'No QR was read from this photo, so scan the original.'))+'</p>'+
+    '<p class="small muted">'+(view==='clean'?(fromCode?'No QR could be read from the photo, so this code was redrawn from the printed badge code. Check the scanner accepts it, or use the original photo.':'Turn your screen brightness up, then scan this code with the licensed scanner.'):(l.qr?'Scanning the original photo.':'No QR was read from this photo, so scan the original.'))+'</p>'+
     '<div><div style="font-weight:700;font-size:18px;font-family:var(--head)">'+esc(leadTitle(l))+'</div>'+(l.name&&l.company?'<div class="muted">'+esc(l.company)+'</div>':'')+
     (l.capturedBy?'<div class="small muted">Met by '+esc(l.capturedBy)+'</div>':'')+
     (r?'<div class="tags"><span class="tag" style="--c:'+r.c+'"><i></i>'+r.label+'</span></div>':'')+'</div>'+
     (note?'<div class="notebox">'+esc(note)+'</div><button class="btn block" type="button" id="copyNote">Copy notes for the scanner</button>':'')+
     '<div class="row2"><button class="btn" type="button" id="skip"'+(q.length<2?' disabled':'')+'>Skip</button><button class="btn primary" type="button" id="done">Scanned, next</button></div>'+
   '</div>';
-  if(view==='clean'){var cv=$('#bigqr');if(!drawQR(cv,l.qr)){S.rqView='photo';renderRescan();return}}
+  if(view==='clean'){var cv=$('#bigqr');if(!drawQR(cv,qrText)){S.rqView='photo';renderRescan();return}}
   $$('[data-rv]').forEach(function(b){b.onclick=function(){S.rqView=b.dataset.rv;renderRescan()}});
   var cn=$('#copyNote');if(cn)cn.onclick=async function(){toast(await copyText(note)?'Notes copied.':'Couldn’t copy. Select the text instead.')};
   $('#skip').onclick=function(){S.rq=(S.rq+1)%q.length;S.rqId=q[S.rq].id;renderRescan();v.scrollTop=0};
