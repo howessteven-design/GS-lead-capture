@@ -1,4 +1,5 @@
 <!doctype html>
+<!-- GSXP Lead Capture | VERSION 1.5 | 14 Nov 2026 | memory-safe photo reading, version label -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -221,6 +222,7 @@ textarea.csv{min-height:180px;font-family:ui-monospace,Menlo,monospace;font-size
 var SUPABASE_URL='https://zhyiakcgajywbnjzqjth.supabase.co';
 var SUPABASE_KEY='sb_publishable_mJPv05SVeyssDTArb_ZZjg_0E4lMaS1';   // publishable key: safe in the browser, protected by row level security
 var BUCKET='badge-photos';
+var VERSION='1.5';
 var TEAM = ['Brook Tuffin','Dan Reed','Jamie Davenport','Max Huber','Nathaly Riano-Gomez','Rod Morton','Steven Howes'];  // Sales + Support staff from Events HQ
 var INTERESTS = ['Puttify','Adventure Golf','Modular Golf','Signature Greens','Aerial courses','Play environments','Themed environments','FEC delivery','Stadium and arena'];
 var RATINGS = [{id:'hot',label:'Hot',c:'var(--hot)'},{id:'warm',label:'Warm',c:'var(--warm)'},{id:'cold',label:'Cold',c:'var(--cold)'}];
@@ -458,20 +460,24 @@ async function scanRegions(canvas){
   if(!window.jsQR)return null;
   var W=canvas.width,H=canvas.height;
   var regions=[[0,0,W,H],[W*.45,H*.5,W*.55,H*.5],[W*.35,H*.4,W*.65,H*.6],[0,H*.45,W,H*.55],[W*.5,H*.6,W*.5,H*.4]];
-  for(var i=0;i<regions.length;i++){
-    var x=Math.round(regions[i][0]),y=Math.round(regions[i][1]),w=Math.round(regions[i][2]),h=Math.round(regions[i][3]);
-    var scales=i===0?[1,.6]:[1,1.6];
-    for(var j=0;j<scales.length;j++){
-      var sc=scales[j],t=document.createElement('canvas');
-      t.width=Math.max(1,Math.round(w*sc));t.height=Math.max(1,Math.round(h*sc));
-      var cx=t.getContext('2d',{willReadFrequently:true});cx.drawImage(canvas,x,y,w,h,0,0,t.width,t.height);
-      var id=cx.getImageData(0,0,t.width,t.height);
-      var res=window.jsQR(id.data,t.width,t.height,{inversionAttempts:'attemptBoth'});
-      if(res&&res.data)return res.data;
-      await tick();
+  var t=document.createElement('canvas'),cx=t.getContext('2d',{willReadFrequently:true}),found=null;
+  try{
+    for(var i=0;i<regions.length&&!found;i++){
+      var x=Math.round(regions[i][0]),y=Math.round(regions[i][1]),w=Math.round(regions[i][2]),h=Math.round(regions[i][3]);
+      var scales=i===0?[1,.6]:[1,1.6];
+      for(var j=0;j<scales.length&&!found;j++){
+        var sc=scales[j];
+        t.width=Math.max(1,Math.round(w*sc));t.height=Math.max(1,Math.round(h*sc));   // one scratch canvas, resized each time
+        cx.drawImage(canvas,x,y,w,h,0,0,t.width,t.height);
+        var id=cx.getImageData(0,0,t.width,t.height);
+        var res=window.jsQR(id.data,t.width,t.height,{inversionAttempts:'attemptBoth'});
+        if(res&&res.data)found=res.data;
+        id=null;
+        await tick();
+      }
     }
-  }
-  return null;
+  }finally{t.width=t.height=0}
+  return found;
 }
 /* Second and third attempts for hard photos: stretch the contrast, then smooth out noise and stretch again. */
 function enhance(src,smooth){
@@ -497,8 +503,10 @@ async function decodeQR(canvas){
   r=await scanRegions(canvas);if(r)return r;
   for(var k=0;k<2;k++){
     var pc=enhance(canvas,k===1);await tick();
-    r=await detectNative(pc);if(r)return r;
-    r=await scanRegions(pc);if(r)return r;
+    r=await detectNative(pc);
+    if(!r)r=await scanRegions(pc);
+    pc.width=pc.height=0;
+    if(r)return r;
   }
   return null;
 }
@@ -594,18 +602,35 @@ function bindForm(host,d){
   });
 }
 function paintPhoto(host,d){var pb=$('#photoBlock',host);if(pb)pb.innerHTML=photoBlockHTML(d)}
-async function handlePhoto(d,file,host){
-  d.qrState='checking';d.qr='';paintPhoto(host,d);
+function blankCheck(canvas){
   try{
-    var img=await loadImage(file);
-    var big=drawScaled(img,2200);
-    d.diag=(('BarcodeDetector' in window)?'native scanner':'no native scanner')+' · '+(window.jsQR?'jsQR loaded':'jsQR NOT loaded')+' · '+big.width+'x'+big.height;
-    var qr=await decodeQR(big);
-    var small=drawScaled(img,1280);
+    var w=Math.min(64,canvas.width),h=Math.min(64,canvas.height);
+    var id=canvas.getContext('2d',{willReadFrequently:true}).getImageData(Math.floor((canvas.width-w)/2),Math.floor((canvas.height-h)/2),w,h).data;
+    var min=255,max=0;
+    for(var i=0;i<id.length;i+=4){var v=id[i]+id[i+1]+id[i+2];if(v<min)min=v;if(v>max)max=v}
+    return max-min<6;       // no variation at all: the browser gave us an empty canvas
+  }catch(e){return true}
+}
+async function handlePhoto(d,file,host){
+  d.qrState='checking';d.qr='';d.diag='';paintPhoto(host,d);
+  var img=null,big=null,small=null;
+  try{
+    img=await loadImage(file);
+    var dm=dims(img);
+    big=drawScaled(img,2200);
+    small=drawScaled(img,1280);
+    if(img.close){img.close();img=null}                       // give the full-size bitmap back to the browser straight away
+    var blank=blankCheck(big);
+    d.diag=(('BarcodeDetector' in window)?'native scanner':'no native scanner')+' · '+(window.jsQR?'jsQR loaded':'jsQR NOT loaded')+' · '+dm.w+'x'+dm.h+' → '+big.width+'x'+big.height+' · pixels '+(blank?'BLANK':'ok');
+    var qr=blank?null:await decodeQR(big);
     var blob=await new Promise(function(r){small.toBlob(r,'image/jpeg',0.82)});
     d.photo=blob||file;d.qr=qr||'';d.qrState=qr?'ok':'fail';
-    if(img.close)img.close();
   }catch(e){d.photo=file;d.qr='';d.qrState='fail';d.diag='error: '+errText(e)}
+  finally{
+    if(big){big.width=big.height=0}
+    if(small){small.width=small.height=0}
+    if(img&&img.close)try{img.close()}catch(x){}
+  }
   d.photoChanged=true;
   if(d.photoUrl&&d.photoUrl.indexOf('blob:')===0)try{URL.revokeObjectURL(d.photoUrl)}catch(e){}
   d.photoUrl=URL.createObjectURL(d.photo);
@@ -674,6 +699,7 @@ function openSetup(first){
       '<div class="field"><label for="s-name">Your name</label><input type="text" id="s-name" autocomplete="name" autocapitalize="words" '+(TEAM.length?'list="team" ':'')+'value="'+esc(S.settings.name||'')+'"></div>'+dl+
       '<div class="field"><label for="s-event">Show</label><input type="text" id="s-event" value="'+esc(S.settings.event||'')+'"></div>'+
       '<button class="btn primary block" type="button" id="s-save">'+(first?'Start capturing':'Save details')+'</button>'+acct+
+      '<p class="small muted" style="text-align:center">App version '+VERSION+'</p>'+
     '</div>';
     $('#s-save',body).onclick=function(){
       var n=$('#s-name',body).value.trim(),ev=$('#s-event',body).value.trim();
