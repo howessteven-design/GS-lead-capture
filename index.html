@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- GSXP Lead Capture | VERSION 1.6 | 14 Nov 2026 | ZXing second reader, full-resolution decoding, debug share button -->
+<!-- GSXP Lead Capture | VERSION 1.7 | 14 Nov 2026 | faster QR reading: strong reader first, runs in the background, 12s limit -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -223,7 +223,7 @@ textarea.csv{min-height:180px;font-family:ui-monospace,Menlo,monospace;font-size
 var SUPABASE_URL='https://zhyiakcgajywbnjzqjth.supabase.co';
 var SUPABASE_KEY='sb_publishable_mJPv05SVeyssDTArb_ZZjg_0E4lMaS1';   // publishable key: safe in the browser, protected by row level security
 var BUCKET='badge-photos';
-var VERSION='1.6';
+var VERSION='1.7';
 var TEAM = ['Brook Tuffin','Dan Reed','Jamie Davenport','Max Huber','Nathaly Riano-Gomez','Rod Morton','Steven Howes'];  // Sales + Support staff from Events HQ
 var INTERESTS = ['Puttify','Adventure Golf','Modular Golf','Signature Greens','Aerial courses','Play environments','Themed environments','FEC delivery','Stadium and arena'];
 var RATINGS = [{id:'hot',label:'Hot',c:'var(--hot)'},{id:'warm',label:'Warm',c:'var(--warm)'},{id:'cold',label:'Cold',c:'var(--cold)'}];
@@ -515,14 +515,15 @@ function enhance(src,smooth){
 }
 /* ZXing (the library most scanner apps use) as a stronger second reader. Loaded from the CDN, cached for offline use. */
 var ZX_BASE='https://cdn.jsdelivr.net/npm/zxing-wasm@3.1.6/dist/reader/';
-var zxReady=null,zxStatus='not used';
+var zxReady=null,zxStatus='not used',zxDeadAt=0;
 function loadZX(){
   if(zxReady)return zxReady;
+  if(zxDeadAt&&Date.now()-zxDeadAt<60000)return Promise.reject(new Error('unavailable'));
   zxReady=(async function(){
     if(!window.ZXingWASM)throw new Error('library not loaded');
     await window.ZXingWASM.prepareZXingModule({overrides:{locateFile:function(p){return ZX_BASE+p}},fireImmediately:true});
     zxStatus='ready';return true;
-  })().catch(function(e){zxStatus='unavailable ('+errText(e)+')';throw e});
+  })().catch(function(e){zxStatus='unavailable ('+errText(e)+')';zxDeadAt=Date.now();throw e});
   return zxReady;
 }
 async function zxingRead(src){
@@ -535,7 +536,7 @@ async function zxingRead(src){
   return null;
 }
 /* Crops taken straight from the full-size photo, so nothing is lost to shrinking. */
-async function scanFullRes(full){
+async function scanFullRes(full,engine){
   var d=dims(full),W=d.w,H=d.h;
   var regions=[[.45,.5,.55,.5],[.3,.4,.7,.6],[0,.45,1,.55]];
   var t=document.createElement('canvas'),cx=t.getContext('2d',{willReadFrequently:true}),found=null;
@@ -547,30 +548,56 @@ async function scanFullRes(full){
         t.width=Math.max(1,Math.round(w*scales[j]));t.height=Math.max(1,Math.round(h*scales[j]));
         cx.imageSmoothingQuality='high';cx.drawImage(full,x,y,w,h,0,0,t.width,t.height);
         var id=cx.getImageData(0,0,t.width,t.height);
-        var res=window.jsQR?window.jsQR(id.data,t.width,t.height,{inversionAttempts:'attemptBoth'}):null;
-        if(res&&res.data)found=res.data;
-        if(!found)found=await zxingRead(id);
+        if(engine==='jsqr'){var res=window.jsQR?window.jsQR(id.data,t.width,t.height,{inversionAttempts:'attemptBoth'}):null;if(res&&res.data)found=res.data}
+        else found=await zxingRead(id);
         id=null;await tick();
       }
     }
   }finally{t.width=t.height=0}
   return found;
 }
-async function decodeQR(canvas,full){
-  var r=await detectNative(canvas);if(r)return r;
-  r=await scanRegions(canvas);if(r)return r;
-  r=await zxingRead(canvas);if(r)return r;
-  if(full){r=await scanFullRes(full);if(r)return r}
-  for(var k=0;k<2;k++){
-    var pc=enhance(canvas,k===1);await tick();
-    r=await detectNative(pc);
-    if(!r)r=await scanRegions(pc);
-    if(!r)r=await zxingRead(pc);
-    pc.width=pc.height=0;
-    if(r)return r;
+/* Reads a badge photo. Fast strong reader first, slower fallbacks only if needed, and it gives up after a time limit. */
+var BUDGET_MS=12000;
+async function readBadge(file){
+  var t0=Date.now(),img=null,big=null,info={qr:null,via:'',view:null,diag:''},blank=false,dm={w:0,h:0};
+  zxStatus='not used';
+  try{
+    img=await loadImage(file);dm=dims(img);
+    big=drawScaled(img,2200);
+    blank=blankCheck(big);
+    if(!blank){
+      var stages=[
+        ['native',function(){return detectNative(big)}],
+        ['zxing',function(){return zxingRead(big)}],
+        ['zxing-full',function(){return scanFullRes(img,'zxing')}],
+        ['zxing-enhanced',async function(){
+          for(var k=0;k<2;k++){var pc=enhance(big,k===1);await tick();var r=await zxingRead(pc);pc.width=pc.height=0;if(r)return r}
+          return null}],
+        ['jsqr',function(){return scanRegions(big)}],
+        ['jsqr-full',function(){return scanFullRes(img,'jsqr')}],
+        ['jsqr-enhanced',async function(){
+          for(var k=0;k<2;k++){var pc=enhance(big,k===1);await tick();var r=await scanRegions(pc);pc.width=pc.height=0;if(r)return r}
+          return null}]
+      ];
+      for(var i=0;i<stages.length;i++){
+        if(Date.now()-t0>BUDGET_MS)break;
+        var r=null;
+        try{r=await stages[i][1]()}catch(e){r=null}
+        if(r){info.qr=r;info.via=stages[i][0];break}
+      }
+    }
+    if(!info.qr){info.view=await new Promise(function(res){big.toBlob(res,'image/jpeg',0.85)})}
+  }catch(e){info.diag='error: '+errText(e)}
+  finally{
+    if(big){big.width=big.height=0}
+    if(img&&img.close)try{img.close()}catch(x){}
   }
-  return null;
+  var secs=((Date.now()-t0)/1000).toFixed(1);
+  if(!info.diag)info.diag=(('BarcodeDetector' in window)?'native scanner':'no native scanner')+' · '+(window.jsQR?'jsQR loaded':'jsQR NOT loaded')+' · zxing '+zxStatus+' · '+dm.w+'x'+dm.h+' · pixels '+(blank?'BLANK':'ok')+' · '+(info.qr?'read via '+info.via:'not read')+' in '+secs+'s';
+  return info;
 }
+var decodeChain=Promise.resolve();
+function queueDecode(job){var p=decodeChain.then(job,job);decodeChain=p.catch(function(){});return p}
 function qrDrawable(text){return !!(text&&window.qrcode&&/^[\x00-\xFF]*$/.test(text))}
 function drawQR(canvas,text){
   var q=null,levels=['M','L'];
@@ -604,7 +631,7 @@ function leadFromDraft(d){
     photo:changed?d.photo:(base.photo||null),photoPath:base.photoPath||null,photoUploaded:changed?false:(base.photoUploaded||false),
     qr:d.qr,name:d.name.trim(),company:d.company.trim(),rating:d.rating,interests:d.interests,notes:d.notes.trim(),badgeId:d.badgeId.trim(),
     status:status,scanSource:scanSource,scannedAt:scannedAt,scannedBy:scannedBy,exportedAt:base.exportedAt||null,
-    dirty:true,synced:!!base.synced,deleted:false,serverUpdatedAt:base.serverUpdatedAt||null};
+    qrPending:d.qrState==='checking',dirty:true,synced:!!base.synced,deleted:false,serverUpdatedAt:base.serverUpdatedAt||null};
 }
 function hasContent(d){return !!(d.photo||d.name.trim()||d.company.trim()||d.notes.trim())}
 function noteForScanner(l){
@@ -619,7 +646,7 @@ function leadTitle(l){return l.name||l.company||'Badge photo'}
 
 /* ---------- Form (shared by Capture and Edit) ---------- */
 function photoBlockHTML(d){
-  if(d.qrState==='checking')return '<div class="photo-row"><div class="thumb skeleton"></div><div class="photo-info"><p class="status wait">Checking the QR code…</p></div></div>';
+  if(d.qrState==='checking')return '<div class="photo-row">'+(d.photoUrl?'<img class="thumb" src="'+d.photoUrl+'" alt="Badge photo">':'<div class="thumb skeleton"></div>')+'<div class="photo-info"><p class="status wait">Reading the QR code in the background</p><p class="small muted">Keep going. You can fill in the details and save now.</p></div></div>';
   if(d.photoUrl){
     var ok=d.qrState==='ok';
     return '<div class="photo-row"><img class="thumb" src="'+d.photoUrl+'" alt="Badge photo"><div class="photo-info">'+
@@ -673,28 +700,18 @@ function blankCheck(canvas){
     return max-min<6;       // no variation at all: the browser gave us an empty canvas
   }catch(e){return true}
 }
+function toBlobAsync(canvas,type,q){return new Promise(function(r){canvas.toBlob(r,type,q)})}
 async function handlePhoto(d,file,host){
-  d.qrState='checking';d.qr='';d.diag='';d.debugFiles=null;paintPhoto(host,d);
-  var img=null,big=null,small=null;
-  zxStatus='not used';
-  try{
+  var token=d.photoToken=(d.photoToken||0)+1;
+  d.qr='';d.qrState='checking';d.diag='';d.debugFiles=null;d.photoUrl=d.photoUrl&&d.photoUrl.indexOf('blob:')===0?d.photoUrl:'';
+  paintPhoto(host,d);
+  var img=null,small=null;
+  try{                                   // 1. a quick thumbnail so the person sees their photo straight away
     img=await loadImage(file);
-    var dm=dims(img);
-    big=drawScaled(img,2200);
     small=drawScaled(img,1280,true);
-    var blank=blankCheck(big);
-    var qr=blank?null:await decodeQR(big,img);
-    d.diag=(('BarcodeDetector' in window)?'native scanner':'no native scanner')+' · '+(window.jsQR?'jsQR loaded':'jsQR NOT loaded')+' · zxing '+zxStatus+' · '+dm.w+'x'+dm.h+' → '+big.width+'x'+big.height+' · pixels '+(blank?'BLANK':'ok');
-    var blob=await new Promise(function(r){small.toBlob(r,'image/jpeg',0.82)});
-    d.photo=blob||file;d.qr=qr||'';d.qrState=qr?'ok':'fail';
-    if(!qr){
-      var dbg=await new Promise(function(r){big.toBlob(r,'image/jpeg',0.85)});
-      d.debugFiles=[file];
-      if(dbg)d.debugFiles.push(new File([dbg],'scanner-view.jpg',{type:'image/jpeg'}));
-    }
-  }catch(e){d.photo=file;d.qr='';d.qrState='fail';d.diag='error: '+errText(e);d.debugFiles=[file]}
+    d.photo=(await toBlobAsync(small,'image/jpeg',0.82))||file;
+  }catch(e){d.photo=file}
   finally{
-    if(big){big.width=big.height=0}
     if(small){small.width=small.height=0}
     if(img&&img.close)try{img.close()}catch(x){}
   }
@@ -702,7 +719,31 @@ async function handlePhoto(d,file,host){
   if(d.photoUrl&&d.photoUrl.indexOf('blob:')===0)try{URL.revokeObjectURL(d.photoUrl)}catch(e){}
   d.photoUrl=URL.createObjectURL(d.photo);
   paintPhoto(host,d);
-  if(d.qrState==='fail')toast('QR not readable. Try retaking the photo.');
+  queueDecode(function(){return readBadge(file)}).then(function(res){onDecoded(d,token,file,res,host)}).catch(function(e){onDecoded(d,token,file,{qr:null,diag:'error: '+errText(e)},host)});
+}
+async function applyQrToLead(id,qr){
+  var l=await dbGet(id);if(!l)return;
+  l.qrPending=false;
+  if(qr)l.qr=qr;
+  l.updatedAt=Date.now();l.dirty=true;
+  await dbPut(l);await refresh();repaint();queueSync(100);
+  toast(qr?'Badge QR code read.':'Couldn’t read the QR code on that badge. Its photo is saved.');
+}
+function onDecoded(d,token,file,res,host){
+  if(d.photoToken!==token)return;                  // a newer photo has replaced this one
+  d.qr=res.qr||'';d.qrState=res.qr?'ok':'fail';d.diag=res.diag||'';
+  d.debugFiles=null;
+  if(!res.qr){d.debugFiles=[file];if(res.view)d.debugFiles.push(new File([res.view],'scanner-view.jpg',{type:'image/jpeg'}))}
+  if(d.saved){applyQrToLead(d.id,d.qr);return}      // the lead was already saved while we were reading
+  if(host&&document.body.contains(host))paintPhoto(host,d);
+  if(!res.qr)toast('QR not readable. You can retake the photo or save it as is.');
+}
+async function resumePending(){                    // after a reload: finish reading any badge that was still being read
+  var all=await dbAll();
+  all.filter(function(l){return l.qrPending}).forEach(function(l){
+    if(!l.photo){l.qrPending=false;dbPut(l);return}
+    queueDecode(function(){return readBadge(l.photo)}).then(function(res){applyQrToLead(l.id,res.qr||'')}).catch(function(){applyQrToLead(l.id,'')});
+  });
 }
 async function shareDebug(d){
   try{
@@ -804,11 +845,11 @@ function openEdit(id){
       '<button class="btn danger block" type="button" id="e-del">Delete lead</button></div>';
     var host=$('#editForm',body);host.innerHTML=formHTML(d);bindForm(host,d);
     $('#e-save',body).onclick=async function(){
-      var nl=leadFromDraft(d);nl.status=l.status;nl.scanSource=l.scanSource;nl.scannedAt=l.scannedAt||null;nl.scannedBy=l.scannedBy||'';
+      d.saved=true;var nl=leadFromDraft(d);nl.status=l.status;nl.scanSource=l.scanSource;nl.scannedAt=l.scannedAt||null;nl.scannedBy=l.scannedBy||'';
       await dbPut(nl);await refresh();closeSheet();renderAll();queueSync(100);toast('Changes saved.');
     };
     $('#e-flip',body).onclick=async function(){
-      var nl=leadFromDraft(d);
+      d.saved=true;var nl=leadFromDraft(d);
       nl.status=l.status==='scanned'?'toscan':'scanned';
       if(nl.status==='scanned'){nl.scanSource='Marked scanned manually';nl.scannedAt=Date.now();nl.scannedBy=S.settings.name||''}
       else{nl.scanSource='';nl.scannedAt=null;nl.scannedBy=''}
@@ -844,12 +885,13 @@ function renderCapture(){
   '</div>';
   var host=$('#capForm');host.innerHTML=formHTML(d);bindForm(host,d);
   $('#saveLead').onclick=async function(){
-    if(d.qrState==='checking'){toast('Still checking the photo. One moment.');return}
     if(!hasContent(d)){toast('Add a badge photo, a name or a note first.');return}
     if(!S.settings.name){openSetup(true);return}
+    var wasChecking=d.qrState==='checking';
+    d.saved=true;
     await dbPut(leadFromDraft(d));await refresh();
     S.draft=newDraft();renderAll();v.scrollTop=0;queueSync(100);
-    toast(d.qrState==='fail'&&d.photo?'Saved. QR wasn’t readable, so check it later.':'Lead saved. Ready for the next badge.');
+    toast(wasChecking?'Lead saved. Still reading the badge in the background.':(d.qrState==='fail'&&d.photo?'Saved. QR wasn’t readable, so check it later.':'Lead saved. Ready for the next badge.'));
   };
 }
 function renderLeads(){
@@ -870,7 +912,7 @@ function renderLeads(){
       '<div class="body"><div class="nm">'+esc(leadTitle(l))+'</div><div class="sub">'+esc(sub||timeLabel(l.createdAt))+'</div>'+
       '<div class="tags">'+(r?'<span class="tag" style="--c:'+r.c+'"><i></i>'+r.label+'</span>':'')+
       '<span class="tag '+l.status+'">'+(l.status==='scanned'?'Scanned':'To scan')+'</span>'+
-      ((l.photo||l.photoPath)&&!l.qr?'<span class="tag" style="--c:var(--bad)"><i></i>No QR</span>':'')+
+      (l.qrPending?'<span class="tag" style="--c:var(--violet)"><i></i>Reading QR</span>':((l.photo||l.photoPath)&&!l.qr?'<span class="tag" style="--c:var(--bad)"><i></i>No QR</span>':''))+
       (l.dirty?'<span class="tag" style="--c:var(--warm)"><i></i>Syncing</span>':'')+
       '<span class="small muted">'+esc(l.capturedBy?l.capturedBy.split(' ')[0]+' · ':'')+esc(timeLabel(l.createdAt))+'</span></div></div></button>';
   }).join('');
@@ -1134,7 +1176,8 @@ async function init(){
     }
   }catch(e){sb=null}
   paintSync();
-  setTimeout(function(){if(navigator.onLine)loadZX().catch(function(){})},4000);
+  setTimeout(function(){if(navigator.onLine)loadZX().catch(function(){})},1500);
+  setTimeout(resumePending,2500);
   if(!sb){if(!S.settings.name)openSetup(true);return}
   sb.auth.onAuthStateChange(function(ev,s){
     setTimeout(function(){
