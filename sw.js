@@ -1,5 +1,5 @@
 /* Caches the app so it still opens in a poor-signal exhibition hall. Data calls to Supabase are never cached. */
-const CACHE = 'gsxp-lc-v1';
+const CACHE = 'gsxp-lc-v2';
 const CORE = [
   './',
   './index.html',
@@ -7,7 +7,9 @@ const CORE = [
   './apple-touch-icon.png',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.js',
   'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js',
-  'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js'
+  'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js',
+  'https://cdn.jsdelivr.net/npm/zxing-wasm@3.1.6/dist/iife/reader/index.js',
+  'https://cdn.jsdelivr.net/npm/zxing-wasm@3.1.6/dist/reader/zxing_reader.wasm'
 ];
 
 self.addEventListener('install', (event) => {
