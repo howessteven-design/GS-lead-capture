@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- GSXP Lead Capture | VERSION 1.8 | 14 Nov 2026 | removed printed-code QR redraw (printed code can differ from QR data) -->
+<!-- GSXP Lead Capture | VERSION 1.9 | 17 Nov 2026 | supplier contacts (separate CSV, not in HubSpot export) -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -193,6 +193,7 @@ textarea.csv{min-height:180px;font-family:ui-monospace,Menlo,monospace;font-size
 .login-in{margin:auto;width:100%;max-width:420px}
 .login .brand{font-size:24px}
 .msg-ok{color:var(--ok)}.msg-bad{color:var(--bad)}
+.stats{gap:8px}.stat{padding:10px 8px;min-width:0}.stat span{font-size:12px}
 </style>
 </head>
 <body>
@@ -223,9 +224,10 @@ textarea.csv{min-height:180px;font-family:ui-monospace,Menlo,monospace;font-size
 var SUPABASE_URL='https://zhyiakcgajywbnjzqjth.supabase.co';
 var SUPABASE_KEY='sb_publishable_mJPv05SVeyssDTArb_ZZjg_0E4lMaS1';   // publishable key: safe in the browser, protected by row level security
 var BUCKET='badge-photos';
-var VERSION='1.8';
+var VERSION='1.9';
 var TEAM = ['Brook Tuffin','Dan Reed','Jamie Davenport','Max Huber','Nathaly Riano-Gomez','Rod Morton','Steven Howes'];  // Sales + Support staff from Events HQ
 var INTERESTS = ['Puttify','Adventure Golf','Modular Golf','Signature Greens','Aerial courses','Play','Themed environments','FECs','Stadium and arena'];
+var SUPPLIER_CATS = ['Materials','Lighting and AV','Technology','Signage and print','Equipment','Services','Other'];   // edit this list to change the supplier categories
 var RATINGS = [{id:'hot',label:'Hot',c:'var(--hot)'},{id:'warm',label:'Warm',c:'var(--warm)'},{id:'cold',label:'Cold',c:'var(--cold)'}];
 var DEFAULT_EVENT = 'IAAPA Expo 2026 Orlando';
 
@@ -335,13 +337,13 @@ function toRow(l,path){
   return {id:l.id,created_at:iso(l.createdAt),captured_by:l.capturedBy||null,event:l.event||null,name:l.name||null,company:l.company||null,
     rating:l.rating||null,interests:l.interests||[],notes:l.notes||null,badge_id:l.badgeId||null,qr:l.qr||null,photo_path:path||null,
     status:l.status||'toscan',scan_source:l.scanSource||null,scanned_at:sc?iso(l.scannedAt||Date.now()):null,scanned_by:sc?(l.scannedBy||null):null,
-    exported_at:iso(l.exportedAt)};
+    exported_at:iso(l.exportedAt),contact_type:l.contactType||'lead',supplier_category:l.supplierCat||null};
 }
 function fromRow(r){
   return {id:r.id,createdAt:msOf(r.created_at),updatedAt:msOf(r.updated_at),capturedBy:r.captured_by||'',event:r.event||'',
     photo:null,photoPath:r.photo_path||null,photoUploaded:true,qr:r.qr||'',name:r.name||'',company:r.company||'',rating:r.rating||'',
     interests:r.interests||[],notes:r.notes||'',badgeId:r.badge_id||'',status:r.status||'toscan',scanSource:r.scan_source||'',
-    scannedAt:msOf(r.scanned_at),scannedBy:r.scanned_by||'',exportedAt:msOf(r.exported_at),
+    scannedAt:msOf(r.scanned_at),scannedBy:r.scanned_by||'',exportedAt:msOf(r.exported_at),contactType:r.contact_type||'lead',supplierCat:r.supplier_category||'',
     dirty:false,synced:true,deleted:false,serverUpdatedAt:r.updated_at};
 }
 function errText(e){return (e&&(e.message||e.error_description||e.msg))||String(e||'')}
@@ -611,26 +613,30 @@ function drawQR(canvas,text){
 }
 
 /* ---------- Draft / lead model ---------- */
-function newDraft(){
-  return {id:uid(),createdAt:Date.now(),photo:null,photoUrl:'',photoChanged:false,qr:'',qrState:'none',name:'',company:'',rating:'',interests:[],notes:'',badgeId:'',alreadyScanned:false};
+function isSup(l){return !!l&&l.contactType==='supplier'}
+function newDraft(type){
+  return {contactType:type||'lead',supplierCat:'',id:uid(),createdAt:Date.now(),photo:null,photoUrl:'',photoChanged:false,qr:'',qrState:'none',name:'',company:'',rating:'',interests:[],notes:'',badgeId:'',alreadyScanned:false};
 }
 function draftFromLead(l){
   var url=urlFor(l),has=!!(l.photo||l.photoPath);
-  return {id:l.id,createdAt:l.createdAt,photo:l.photo||null,photoUrl:url,photoChanged:false,qr:l.qr||'',qrState:has?(l.qr?'ok':'fail'):'none',name:l.name||'',company:l.company||'',rating:l.rating||'',interests:(l.interests||[]).slice(),notes:l.notes||'',badgeId:l.badgeId||'',alreadyScanned:l.status==='scanned',_lead:l};
+  return {id:l.id,createdAt:l.createdAt,photo:l.photo||null,photoUrl:url,photoChanged:false,qr:l.qr||'',qrState:has?(l.qr?'ok':'fail'):'none',name:l.name||'',company:l.company||'',rating:l.rating||'',interests:(l.interests||[]).slice(),notes:l.notes||'',badgeId:l.badgeId||'',alreadyScanned:l.status==='scanned',contactType:l.contactType||'lead',supplierCat:l.supplierCat||'',_lead:l};
 }
 function leadFromDraft(d){
   var base=d._lead||{};
   var changed=!!d.photoChanged;
-  var status=d.alreadyScanned?'scanned':'toscan';
+  var sup=d.contactType==='supplier';
+  var status=sup?'na':(d.alreadyScanned?'scanned':'toscan');
   var scanSource=base.scanSource||'',scannedAt=base.scannedAt||null,scannedBy=base.scannedBy||'';
-  if(status==='scanned'){
+  if(sup){scanSource='';scannedAt=null;scannedBy=''}
+  else if(status==='scanned'){
     if(!scanSource)scanSource='Licensed scanner at booth';
     if(!scannedAt){scannedAt=Date.now();scannedBy=S.settings.name||''}
   }else{scanSource='';scannedAt=null;scannedBy=''}
   return {id:d.id,createdAt:d.createdAt,updatedAt:Date.now(),capturedBy:base.capturedBy||S.settings.name||'',event:base.event||S.settings.event||'',
     photo:changed?d.photo:(base.photo||null),photoPath:base.photoPath||null,photoUploaded:changed?false:(base.photoUploaded||false),
-    qr:d.qr,name:d.name.trim(),company:d.company.trim(),rating:d.rating,interests:d.interests,notes:d.notes.trim(),badgeId:d.badgeId.trim(),
-    status:status,scanSource:scanSource,scannedAt:scannedAt,scannedBy:scannedBy,exportedAt:base.exportedAt||null,
+    contactType:d.contactType||'lead',supplierCat:sup?d.supplierCat:'',
+    qr:d.qr,name:d.name.trim(),company:d.company.trim(),rating:sup?'':d.rating,interests:sup?[]:d.interests,notes:d.notes.trim(),badgeId:d.badgeId.trim(),
+    status:status,scanSource:scanSource,scannedAt:scannedAt,scannedBy:scannedBy,exportedAt:((base.contactType||'lead')!==(d.contactType||'lead')?null:(base.exportedAt||null)),
     qrPending:d.qrState==='checking',dirty:true,synced:!!base.synced,deleted:false,serverUpdatedAt:base.serverUpdatedAt||null};
 }
 function hasContent(d){return !!(d.photo||d.name.trim()||d.company.trim()||d.notes.trim())}
@@ -646,6 +652,11 @@ function leadTitle(l){return l.name||l.company||'Badge photo'}
 
 /* ---------- Form (shared by Capture and Edit) ---------- */
 function photoBlockHTML(d){
+  if(d.contactType==='supplier'){
+    if(d.photoUrl||d.qrState==='checking')return '<div class="photo-row">'+(d.photoUrl?'<img class="thumb" src="'+d.photoUrl+'" alt="Photo">':'<div class="thumb skeleton"></div>')+'<div class="photo-info"><p class="status ok"><span class="dot"></span>Photo added</p><label class="btn ghost sm">Retake photo<input class="vh" type="file" accept="image/*" capture="environment" data-photo></label></div></div>';
+    return '<label class="capture-btn"><svg viewBox="0 0 24 24"><path d="M4 8h3l1.6-2.4h6.8L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.6"/></svg><div><b>Photograph the badge or card</b><span>Optional. Helps with follow-up</span></div><input class="vh" type="file" accept="image/*" capture="environment" data-photo></label>'+
+      '<label class="link-btn">Choose an existing photo<input class="vh" type="file" accept="image/*" data-photo></label>';
+  }
   if(d.qrState==='checking')return '<div class="photo-row">'+(d.photoUrl?'<img class="thumb" src="'+d.photoUrl+'" alt="Badge photo">':'<div class="thumb skeleton"></div>')+'<div class="photo-info"><p class="status wait">Reading the QR code in the background</p><p class="small muted">Keep going. You can fill in the details and save now.</p></div></div>';
   if(d.photoUrl){
     var ok=d.qrState==='ok';
@@ -658,19 +669,24 @@ function photoBlockHTML(d){
     '<label class="link-btn">Choose an existing photo<input class="vh" type="file" accept="image/*" data-photo></label>';
 }
 function formHTML(d){
+  var sup=d.contactType==='supplier';
+  var ctype='<div class="field"><span class="lbl">Who is this?</span><div class="seg" style="grid-template-columns:repeat(2,1fr)"><button type="button" data-ct="lead" aria-pressed="'+(!sup)+'" style="--c:var(--primary)"><i></i>Lead</button><button type="button" data-ct="supplier" aria-pressed="'+sup+'" style="--c:var(--violet)"><i></i>Supplier</button></div></div>';
+  var cats=SUPPLIER_CATS.map(function(x){return '<button type="button" data-scat="'+esc(x)+'" aria-pressed="'+(d.supplierCat===x)+'">'+esc(x)+'</button>'}).join('');
   var rating=RATINGS.map(function(r){return '<button type="button" data-rate="'+r.id+'" aria-pressed="'+(d.rating===r.id)+'" style="--c:'+r.c+'"><i></i>'+r.label+'</button>'}).join('');
   var ints=INTERESTS.map(function(x){return '<button type="button" data-int="'+esc(x)+'" aria-pressed="'+(d.interests.indexOf(x)>-1)+'">'+esc(x)+'</button>'}).join('');
   return '<div class="stack">'+
+    ctype+
     '<div id="photoBlock">'+photoBlockHTML(d)+'</div>'+
     '<div class="field"><label for="f-name">Name</label><input type="text" id="f-name" data-f="name" autocomplete="off" autocapitalize="words" placeholder="As printed on the badge" value="'+esc(d.name)+'"></div>'+
     '<div class="field"><label for="f-company">Company</label><input type="text" id="f-company" data-f="company" autocomplete="off" autocapitalize="words" value="'+esc(d.company)+'"></div>'+
+    (sup?'<div class="field"><span class="lbl">What do they supply?</span><div class="chips">'+cats+'</div></div>':
     '<div class="field"><span class="lbl">How warm is the lead?</span><div class="seg">'+rating+'</div></div>'+
-    '<div class="field"><span class="lbl">Interested in</span><div class="chips">'+ints+'</div></div>'+
-    '<div class="field"><label for="f-notes">Notes</label><div class="notes-wrap"><textarea id="f-notes" data-f="notes" placeholder="What did they ask about? Next step?">'+esc(d.notes)+'</textarea><button type="button" class="mic" data-mic aria-pressed="false" aria-label="Dictate notes"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button></div></div>'+
-    '<details><summary>More details</summary><div class="stack">'+
+    '<div class="field"><span class="lbl">Interested in</span><div class="chips">'+ints+'</div></div>')+
+    '<div class="field"><label for="f-notes">Notes</label><div class="notes-wrap"><textarea id="f-notes" data-f="notes" placeholder="'+(sup?'What do they offer? Prices, contact details, next step?':'What did they ask about? Next step?')+'">'+esc(d.notes)+'</textarea><button type="button" class="mic" data-mic aria-pressed="false" aria-label="Dictate notes"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button></div></div>'+
+    (sup?'':'<details><summary>More details</summary><div class="stack">'+
       '<div class="field"><label for="f-badge">Printed badge code</label><input type="text" id="f-badge" data-f="badgeId" autocomplete="off" autocapitalize="characters" placeholder="Small code under the QR, if there is one" value="'+esc(d.badgeId)+'"></div>'+
       '<label class="switch"><input type="checkbox" data-f="alreadyScanned"'+(d.alreadyScanned?' checked':'')+'>Already scanned on a licensed scanner</label>'+
-    '</div></details>'+
+    '</div></details>')+
   '</div>';
 }
 function bindForm(host,d){
@@ -685,6 +701,13 @@ function bindForm(host,d){
   host.addEventListener('click',function(e){
     var b=e.target.closest('button');if(!b||!host.contains(b))return;
     if(b.dataset.rate){d.rating=d.rating===b.dataset.rate?'':b.dataset.rate;$$('[data-rate]',host).forEach(function(x){x.setAttribute('aria-pressed',String(x.dataset.rate===d.rating))})}
+    else if(b.dataset.ct){
+      if(d.contactType!==b.dataset.ct){
+        stopMic();d.contactType=b.dataset.ct;host.innerHTML=formHTML(d);
+        var sv=$('#saveLead');if(sv)sv.textContent=d.contactType==='supplier'?'Save supplier':'Save lead';
+      }
+    }
+    else if(b.dataset.scat!==undefined){d.supplierCat=d.supplierCat===b.dataset.scat?'':b.dataset.scat;$$('[data-scat]',host).forEach(function(x){x.setAttribute('aria-pressed',String(x.dataset.scat===d.supplierCat))})}
     else if(b.dataset.int!==undefined){var i=d.interests.indexOf(b.dataset.int);if(i>-1)d.interests.splice(i,1);else d.interests.push(b.dataset.int);b.setAttribute('aria-pressed',String(i<0))}
     else if(b.hasAttribute('data-mic')){toggleMic(b,host,d)}
     else if(b.hasAttribute('data-debug')){shareDebug(d)}
@@ -727,7 +750,7 @@ async function applyQrToLead(id,qr){
   if(qr)l.qr=qr;
   l.updatedAt=Date.now();l.dirty=true;
   await dbPut(l);await refresh();repaint();queueSync(100);
-  toast(qr?'Badge QR code read.':'Couldn’t read the QR code on that badge. Its photo is saved.');
+  if(!isSup(l))toast(qr?'Badge QR code read.':'Couldn’t read the QR code on that badge. Its photo is saved.');
 }
 function onDecoded(d,token,file,res,host){
   if(d.photoToken!==token)return;                  // a newer photo has replaced this one
@@ -736,7 +759,7 @@ function onDecoded(d,token,file,res,host){
   if(!res.qr){d.debugFiles=[file];if(res.view)d.debugFiles.push(new File([res.view],'scanner-view.jpg',{type:'image/jpeg'}))}
   if(d.saved){applyQrToLead(d.id,d.qr);return}      // the lead was already saved while we were reading
   if(host&&document.body.contains(host))paintPhoto(host,d);
-  if(!res.qr)toast('QR not readable. You can retake the photo or save it as is.');
+  if(!res.qr&&d.contactType!=='supplier')toast('QR not readable. You can retake the photo or save it as is.');
 }
 async function resumePending(){                    // after a reload: finish reading any badge that was still being read
   var all=await dbAll();
@@ -837,18 +860,19 @@ function openEdit(id){
   var l=S.leads.find(function(x){return x.id===id});if(!l)return;
   var d=draftFromLead(l);
   openSheet(leadTitle(l),function(body){
-    body.innerHTML='<div class="stack"><div class="tags" style="margin:0"><span class="tag '+l.status+'">'+(l.status==='scanned'?'Scanned':'To scan')+'</span>'+
+    body.innerHTML='<div class="stack"><div class="tags" style="margin:0">'+(isSup(l)?'<span class="tag" style="--c:var(--violet)"><i></i>Supplier</span>':'<span class="tag '+l.status+'">'+(l.status==='scanned'?'Scanned':'To scan')+'</span>')+
       '<span class="small muted">Captured '+esc(timeLabel(l.createdAt))+(l.capturedBy?' by '+esc(l.capturedBy):'')+'</span></div>'+
       '<div id="editForm"></div>'+
       '<button class="btn primary block" type="button" id="e-save">Save changes</button>'+
-      '<button class="btn block" type="button" id="e-flip">'+(l.status==='scanned'?'Move back to rescan queue':'Mark as scanned')+'</button>'+
-      '<button class="btn danger block" type="button" id="e-del">Delete lead</button></div>';
+      (isSup(l)?'':'<button class="btn block" type="button" id="e-flip">'+(l.status==='scanned'?'Move back to rescan queue':'Mark as scanned')+'</button>')+
+      '<button class="btn danger block" type="button" id="e-del">'+(isSup(l)?'Delete supplier':'Delete lead')+'</button></div>';
     var host=$('#editForm',body);host.innerHTML=formHTML(d);bindForm(host,d);
     $('#e-save',body).onclick=async function(){
-      d.saved=true;var nl=leadFromDraft(d);nl.status=l.status;nl.scanSource=l.scanSource;nl.scannedAt=l.scannedAt||null;nl.scannedBy=l.scannedBy||'';
+      d.saved=true;var nl=leadFromDraft(d);
+      if(nl.contactType!=='supplier'&&!isSup(l)){nl.status=l.status;nl.scanSource=l.scanSource;nl.scannedAt=l.scannedAt||null;nl.scannedBy=l.scannedBy||''}
       await dbPut(nl);await refresh();closeSheet();renderAll();queueSync(100);toast('Changes saved.');
     };
-    $('#e-flip',body).onclick=async function(){
+    var fl=$('#e-flip',body);if(fl)fl.onclick=async function(){
       d.saved=true;var nl=leadFromDraft(d);
       nl.status=l.status==='scanned'?'toscan':'scanned';
       if(nl.status==='scanned'){nl.scanSource='Marked scanned manually';nl.scannedAt=Date.now();nl.scannedBy=S.settings.name||''}
@@ -857,22 +881,23 @@ function openEdit(id){
     };
     var del=$('#e-del',body),armed=false;
     del.onclick=async function(){
-      if(!armed){armed=true;del.textContent='Tap again to delete for good';setTimeout(function(){armed=false;del.textContent='Delete lead'},3500);return}
+      if(!armed){armed=true;del.textContent='Tap again to delete for good';setTimeout(function(){armed=false;del.textContent=isSup(l)?'Delete supplier':'Delete lead'},3500);return}
       if(l.synced||l.photoPath)await dbPut(Object.assign({},l,{deleted:true,dirty:true,updatedAt:Date.now()}));
       else await dbDel(l.id);
-      await refresh();closeSheet();renderAll();queueSync(100);toast('Lead deleted.');
+      await refresh();closeSheet();renderAll();queueSync(100);toast(isSup(l)?'Supplier deleted.':'Lead deleted.');
     };
   });
 }
 
 /* ---------- Views ---------- */
 function counts(){
-  var toscan=S.leads.filter(function(l){return l.status==='toscan'}).length;
+  var leads=S.leads.filter(function(l){return !isSup(l)});
+  var toscan=leads.filter(function(l){return l.status==='toscan'}).length;
   var mine=S.leads.filter(function(l){return l.capturedBy&&l.capturedBy===S.settings.name}).length;
-  return {all:S.leads.length,toscan:toscan,scanned:S.leads.length-toscan,mine:mine};
+  return {all:S.leads.length,leads:leads.length,suppliers:S.leads.length-leads.length,toscan:toscan,scanned:leads.length-toscan,mine:mine};
 }
 function statsHTML(c){
-  return '<div class="stat"><b>'+c.all+'</b><span>Team leads</span></div><div class="stat"><b>'+c.mine+'</b><span>Yours</span></div><div class="stat"><b>'+c.toscan+'</b><span>To rescan</span></div>';
+  return '<div class="stat"><b>'+c.leads+'</b><span>Leads</span></div><div class="stat"><b>'+c.suppliers+'</b><span>Suppliers</span></div><div class="stat"><b>'+c.mine+'</b><span>Yours</span></div><div class="stat"><b>'+c.toscan+'</b><span>To rescan</span></div>';
 }
 function renderCapture(){
   if(!S.draft)S.draft=newDraft();
@@ -881,7 +906,7 @@ function renderCapture(){
     (S.persisted?'':'<div class="banner">This browser can’t keep photos after you close the page. Stay signed in and online so leads sync.</div>')+
     '<div class="stats" id="stats">'+statsHTML(c)+'</div>'+
     '<div class="card" id="capForm"></div>'+
-    '<button class="btn primary block" type="button" id="saveLead">Save lead</button>'+
+    '<button class="btn primary block" type="button" id="saveLead">'+(d.contactType==='supplier'?'Save supplier':'Save lead')+'</button>'+
   '</div>';
   var host=$('#capForm');host.innerHTML=formHTML(d);bindForm(host,d);
   $('#saveLead').onclick=async function(){
@@ -890,17 +915,19 @@ function renderCapture(){
     var wasChecking=d.qrState==='checking';
     d.saved=true;
     await dbPut(leadFromDraft(d));await refresh();
-    S.draft=newDraft();renderAll();v.scrollTop=0;queueSync(100);
-    toast(wasChecking?'Lead saved. Still reading the badge in the background.':(d.qrState==='fail'&&d.photo?'Saved. QR wasn’t readable, so check it later.':'Lead saved. Ready for the next badge.'));
+    var wasSup=d.contactType==='supplier';
+    S.draft=newDraft(d.contactType);renderAll();v.scrollTop=0;queueSync(100);
+    toast(wasSup?'Supplier saved. Ready for the next one.':wasChecking?'Lead saved. Still reading the badge in the background.':(d.qrState==='fail'&&d.photo?'Saved. QR wasn’t readable, so check it later.':'Lead saved. Ready for the next badge.'));
   };
 }
 function renderLeads(){
   var c=counts(),v=$('#view'),keep=v.scrollTop;
   var list=S.leads.filter(function(l){
+    if(S.filter==='suppliers'&&!isSup(l))return false;
     if(S.filter==='toscan'&&l.status!=='toscan')return false;
     if(S.filter==='scanned'&&l.status!=='scanned')return false;
     if(S.filter==='mine'&&!(l.capturedBy&&l.capturedBy===S.settings.name))return false;
-    if(S.q){var h=(l.name+' '+l.company+' '+l.notes+' '+l.capturedBy).toLowerCase();if(h.indexOf(S.q.toLowerCase())<0)return false}
+    if(S.q){var h=(l.name+' '+l.company+' '+l.notes+' '+l.capturedBy+' '+(l.supplierCat||'')).toLowerCase();if(h.indexOf(S.q.toLowerCase())<0)return false}
     return true;
   });
   var rows=list.map(function(l){
@@ -911,24 +938,26 @@ function renderLeads(){
       (u?'<img class="thumb" src="'+u+'" alt="">':'<div class="thumb"></div>')+
       '<div class="body"><div class="nm">'+esc(leadTitle(l))+'</div><div class="sub">'+esc(sub||timeLabel(l.createdAt))+'</div>'+
       '<div class="tags">'+(r?'<span class="tag" style="--c:'+r.c+'"><i></i>'+r.label+'</span>':'')+
+      (isSup(l)?'<span class="tag" style="--c:var(--violet)"><i></i>Supplier</span>'+(l.supplierCat?'<span class="tag">'+esc(l.supplierCat)+'</span>':''):
       '<span class="tag '+l.status+'">'+(l.status==='scanned'?'Scanned':'To scan')+'</span>'+
-      (l.qrPending?'<span class="tag" style="--c:var(--violet)"><i></i>Reading QR</span>':((l.photo||l.photoPath)&&!l.qr?'<span class="tag" style="--c:var(--bad)"><i></i>No QR</span>':''))+
+      (l.qrPending?'<span class="tag" style="--c:var(--violet)"><i></i>Reading QR</span>':((l.photo||l.photoPath)&&!l.qr?'<span class="tag" style="--c:var(--bad)"><i></i>No QR</span>':'')))+
       (l.dirty?'<span class="tag" style="--c:var(--warm)"><i></i>Syncing</span>':'')+
       '<span class="small muted">'+esc(l.capturedBy?l.capturedBy.split(' ')[0]+' · ':'')+esc(timeLabel(l.createdAt))+'</span></div></div></button>';
   }).join('');
   v.innerHTML='<div class="stack"><div class="tools">'+
-    '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h2>Leads</h2><button class="btn sm primary" type="button" id="exportBtn"'+(c.all?'':' disabled')+'>Export CSV</button></div>'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h2>Leads</h2><div style="display:flex;gap:8px"><button class="btn sm" type="button" id="exportSupBtn"'+(c.suppliers?'':' disabled')+'>Suppliers CSV</button><button class="btn sm primary" type="button" id="exportBtn"'+(c.leads?'':' disabled')+'>Leads CSV</button></div></div>'+
     '<input type="text" id="search" placeholder="Search name, company, notes or who met them" value="'+esc(S.q)+'" aria-label="Search leads">'+
-    '<div class="filters">'+[['all','All ('+c.all+')'],['mine','Mine ('+c.mine+')'],['toscan','To scan ('+c.toscan+')'],['scanned','Scanned ('+c.scanned+')']].map(function(f){return '<button type="button" data-filter="'+f[0]+'" aria-pressed="'+(S.filter===f[0])+'">'+f[1]+'</button>'}).join('')+'</div></div>'+
+    '<div class="filters">'+[['all','All ('+c.all+')'],['mine','Mine ('+c.mine+')'],['toscan','To scan ('+c.toscan+')'],['scanned','Scanned ('+c.scanned+')'],['suppliers','Suppliers ('+c.suppliers+')']].map(function(f){return '<button type="button" data-filter="'+f[0]+'" aria-pressed="'+(S.filter===f[0])+'">'+f[1]+'</button>'}).join('')+'</div></div>'+
     (rows||'<div class="empty"><h3>'+(c.all?'No matches':'No leads yet')+'</h3><p class="small">'+(c.all?'Try a different search or filter.':'Photograph a badge on the Capture tab and it will show up here for the whole team.')+'</p></div>')+
   '</div>';
   v.scrollTop=keep;
   $('#search').oninput=function(e){S.q=e.target.value;var pos=e.target.selectionStart;renderLeads();var s=$('#search');s.focus();try{s.setSelectionRange(pos,pos)}catch(x){}};
   $$('[data-filter]').forEach(function(b){b.onclick=function(){S.filter=b.dataset.filter;renderLeads()}});
   $$('[data-open]').forEach(function(b){b.onclick=function(){openEdit(b.dataset.open)}});
-  $('#exportBtn').onclick=openExport;
+  $('#exportBtn').onclick=function(){openExport('lead')};
+  $('#exportSupBtn').onclick=function(){openExport('supplier')};
 }
-function queue(){return S.leads.filter(function(l){return l.status==='toscan'}).sort(function(a,b){return a.createdAt-b.createdAt})}
+function queue(){return S.leads.filter(function(l){return l.status==='toscan'&&!isSup(l)}).sort(function(a,b){return a.createdAt-b.createdAt})}
 function renderRescan(){
   var q=queue(),v=$('#view');
   if(!q.length){
@@ -978,6 +1007,15 @@ function buildCSV(leads){
   });
   return '\uFEFF'+rows.join('\r\n');
 }
+function buildSupplierCSV(list){
+  var cols=['First Name','Last Name','Company Name','Category','Notes','Show','Captured By','Captured At'];
+  var rows=[cols.map(csvCell).join(',')];
+  list.slice().sort(function(a,b){return a.createdAt-b.createdAt}).forEach(function(l){
+    var parts=(l.name||'').trim().split(/\s+/),first=parts.shift()||'',last=parts.join(' ');
+    rows.push([first,last,l.company,l.supplierCat,l.notes,l.event,l.capturedBy,new Date(l.createdAt).toISOString()].map(csvCell).join(','));
+  });
+  return '\uFEFF'+rows.join('\r\n');
+}
 function slug(s){return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'')}
 async function saveCSV(fn,csv){
   var blob=new Blob([csv],{type:'text/csv'});
@@ -990,13 +1028,15 @@ async function saveCSV(fn,csv){
     setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},1500);return 'downloaded';
   }catch(e){return 'fail'}
 }
-function openExport(){
-  var all=S.leads,fresh=all.filter(function(l){return !l.exportedAt});
-  openSheet('Export leads',function(body){
+function openExport(kind){
+  var sup=kind==='supplier';
+  var all=S.leads.filter(function(l){return sup?isSup(l):!isSup(l)}),fresh=all.filter(function(l){return !l.exportedAt});
+  openSheet(sup?'Export suppliers':'Export leads',function(body){
     body.innerHTML='<div class="stack">'+
-      '<p class="muted small">Exports everyone’s leads as a CSV you can import into HubSpot. “Not yet exported” is shared across the team, so nobody exports the same lead twice.</p>'+
+      (sup?'<p class="muted small">Exports everyone’s supplier contacts as a separate CSV. These are not for HubSpot. “Not yet exported” is shared across the team, so nobody exports the same supplier twice.</p>':
+      '<p class="muted small">Exports everyone’s leads as a CSV you can import into HubSpot. Supplier contacts are never included. “Not yet exported” is shared across the team, so nobody exports the same lead twice.</p>')+
       '<button class="btn primary block" type="button" id="x-new"'+(fresh.length?'':' disabled')+'>Not yet exported ('+fresh.length+')</button>'+
-      '<button class="btn block" type="button" id="x-all">All leads ('+all.length+')</button>'+
+      '<button class="btn block" type="button" id="x-all">'+(sup?'All suppliers (':'All leads (')+all.length+')</button>'+
       '<div id="x-fallback"></div></div>';
     async function mark(set){
       var now=Date.now();
@@ -1010,7 +1050,7 @@ function openExport(){
     }
     function run(set){
       if(!set.length)return;
-      var csv=buildCSV(set),fn='leads-'+(slug(S.settings.event)||'show')+'-'+new Date().toISOString().slice(0,10)+'.csv';
+      var csv=sup?buildSupplierCSV(set):buildCSV(set),fn=(sup?'suppliers-':'leads-')+(slug(S.settings.event)||'show')+'-'+new Date().toISOString().slice(0,10)+'.csv';
       saveCSV(fn,csv).then(async function(r){
         if(r==='cancelled')return;
         if(r==='fail'){showCopy(set,csv);return}
