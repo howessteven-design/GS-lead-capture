@@ -24,6 +24,10 @@ create table if not exists public.leads (
 
 alter table public.leads add column if not exists scanned_by text;
 alter table public.leads add column if not exists exported_at timestamptz;
+
+-- Supplier contacts (v1.9): kept apart from leads so they never reach the HubSpot export
+alter table public.leads add column if not exists contact_type text not null default 'lead';
+alter table public.leads add column if not exists supplier_category text;
 alter table public.leads alter column status set default 'toscan';
 
 -- Server-side "last changed" time, so phones with wrong clocks can't cause conflicts
