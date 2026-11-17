@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- GSXP Lead Capture | VERSION 1.9 | 17 Nov 2026 | supplier contacts (separate CSV, not in HubSpot export) -->
+<!-- GSXP Lead Capture | VERSION 1.10 | 17 Nov 2026 | team leaderboard (leads only, duplicate badges counted once) -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -194,6 +194,14 @@ textarea.csv{min-height:180px;font-family:ui-monospace,Menlo,monospace;font-size
 .login .brand{font-size:24px}
 .msg-ok{color:var(--ok)}.msg-bad{color:var(--bad)}
 .stats{gap:8px}.stat{padding:10px 8px;min-width:0}.stat span{font-size:12px}
+.board-row{display:grid;grid-template-columns:30px 1fr auto;gap:10px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.board-row.me{border-color:var(--primary);box-shadow:inset 0 0 0 1px var(--primary)}
+.board-row .rk{font-family:var(--head);font-size:20px;font-weight:700;color:var(--muted);text-align:center}
+.board-row.first .rk{color:var(--primary)}
+.board-row .nm{font-weight:700}
+.board-row .ct{font-family:var(--head);font-size:28px;font-weight:700;line-height:1}
+.board-row .bar{height:5px;border-radius:3px;background:var(--surface2);margin-top:7px;overflow:hidden}
+.board-row .bar i{display:block;height:100%;background:var(--primary);border-radius:3px}
 </style>
 </head>
 <body>
@@ -208,6 +216,7 @@ textarea.csv{min-height:180px;font-family:ui-monospace,Menlo,monospace;font-size
   <nav aria-label="Sections">
     <button type="button" data-tab="capture"><svg viewBox="0 0 24 24"><path d="M4 8h3l1.6-2.4h6.8L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.6"/></svg>Capture</button>
     <button type="button" data-tab="leads"><svg viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>Leads<span class="badge" id="bLeads"></span></button>
+    <button type="button" data-tab="board"><svg viewBox="0 0 24 24"><path d="M5 20v-8M12 20V5M19 20v-5"/></svg>Board</button>
     <button type="button" data-tab="rescan"><svg viewBox="0 0 24 24"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><path d="M8 11h8M8 15h8"/></svg>Rescan<span class="badge" id="bScan"></span></button>
   </nav>
 </div>
@@ -224,7 +233,7 @@ textarea.csv{min-height:180px;font-family:ui-monospace,Menlo,monospace;font-size
 var SUPABASE_URL='https://zhyiakcgajywbnjzqjth.supabase.co';
 var SUPABASE_KEY='sb_publishable_mJPv05SVeyssDTArb_ZZjg_0E4lMaS1';   // publishable key: safe in the browser, protected by row level security
 var BUCKET='badge-photos';
-var VERSION='1.9';
+var VERSION='1.10';
 var TEAM = ['Brook Tuffin','Dan Reed','Jamie Davenport','Max Huber','Nathaly Riano-Gomez','Rod Morton','Steven Howes'];  // Sales + Support staff from Events HQ
 var INTERESTS = ['Puttify','Adventure Golf','Modular Golf','Signature Greens','Aerial courses','Play','Themed environments','FECs','Stadium and arena'];
 var SUPPLIER_CATS = ['Materials','Lighting and AV','Technology','Signage and print','Equipment','Services','Other'];   // edit this list to change the supplier categories
@@ -996,6 +1005,49 @@ function renderRescan(){
   };
 }
 
+/* ---------- Leaderboard ---------- */
+function normName(s){return String(s||'').toLowerCase().replace(/\s+/g,' ').trim()}
+function dupKey(l){                                // the same badge or the same person+company counts once
+  var q=(l.qr||'').trim();if(q)return 'q:'+q;
+  var b=(l.badgeId||'').replace(/\s+/g,'').toUpperCase();if(b)return 'b:'+b;
+  var n=normName(l.name),c=normName(l.company);if(n&&c)return 'n:'+n+'|'+c;
+  return 'id:'+l.id;
+}
+function boardData(){
+  var ev=normName(S.settings.event);
+  var pool=S.leads.filter(function(l){return !isSup(l)&&normName(l.event)===ev}).sort(function(a,b){return a.createdAt-b.createdAt});
+  var seen={},unique=[],dupes=0;
+  pool.forEach(function(l){var k=dupKey(l);if(seen[k]){dupes++;return}seen[k]=1;unique.push(l)});   // earliest capture gets the credit
+  var d0=new Date();d0.setHours(0,0,0,0);d0=d0.getTime();
+  var people={},order=[];
+  function person(name){var k=normName(name)||'(no name)';if(!people[k]){people[k]={key:k,name:name||'No name set',show:0,today:0,hot:0,hotToday:0};order.push(k)}return people[k]}
+  TEAM.forEach(person);
+  unique.forEach(function(l){
+    var p=person(l.capturedBy);p.show++;if(l.rating==='hot')p.hot++;
+    if(l.createdAt>=d0){p.today++;if(l.rating==='hot')p.hotToday++}
+  });
+  return {people:order.map(function(k){return people[k]}).filter(function(p){return p.key!=='(no name)'||p.show>0}),dupes:dupes,total:unique.length};
+}
+function renderBoard(){
+  var v=$('#view'),keep=v.scrollTop,range=S.boardRange||'show',today=range==='today';
+  var d=boardData(),me=normName(S.settings.name);
+  var list=d.people.map(function(p){return {p:p,n:today?p.today:p.show,hot:today?p.hotToday:p.hot,other:today?p.show:p.today}})
+    .sort(function(a,b){return b.n-a.n||b.hot-a.hot||a.p.name.localeCompare(b.p.name)});
+  var max=list.length?list[0].n:0,rank=0,prev=null;
+  var rows=list.map(function(r,i){
+    if(r.n!==prev){rank=i+1;prev=r.n}
+    var pct=max?Math.round(r.n/max*100):0;
+    return '<div class="board-row'+(rank===1&&r.n>0?' first':'')+(r.p.key===me?' me':'')+'"><div class="rk">'+rank+'</div><div><div class="nm">'+esc(r.p.name)+(r.p.key===me?' <span class="small muted">(you)</span>':'')+'</div>'+
+      '<div class="small muted">'+r.hot+' hot · '+(today?'show total ':'today ')+r.other+'</div><div class="bar"><i style="width:'+pct+'%"></i></div></div><div class="ct">'+r.n+'</div></div>';
+  }).join('');
+  v.innerHTML='<div class="stack"><div><h2>Leaderboard</h2><p class="small muted">'+esc(S.settings.event||'')+' · leads only. Suppliers aren’t counted, and a badge captured twice counts once, for whoever got it first.</p></div>'+
+    '<div class="filters"><button type="button" data-br="show" aria-pressed="'+(!today)+'">Whole show</button><button type="button" data-br="today" aria-pressed="'+today+'">Today</button></div>'+
+    rows+
+    '<p class="small muted" style="text-align:center">'+d.total+' leads counted'+(d.dupes?' · '+d.dupes+' duplicate'+(d.dupes===1?'':'s')+' ignored':'')+'</p></div>';
+  v.scrollTop=keep;
+  $$('[data-br]').forEach(function(b){b.onclick=function(){S.boardRange=b.dataset.br;renderBoard()}});
+}
+
 /* ---------- Export ---------- */
 function csvCell(s){s=String(s==null?'':s);return /[",\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
 function buildCSV(leads){
@@ -1184,7 +1236,7 @@ function paintChrome(){
 function renderAll(){
   stopMic();
   paintChrome();
-  if(S.tab==='capture')renderCapture();else if(S.tab==='leads')renderLeads();else renderRescan();
+  if(S.tab==='capture')renderCapture();else if(S.tab==='leads')renderLeads();else if(S.tab==='board')renderBoard();else renderRescan();
   wake(S.tab==='rescan');
 }
 /* Called after a background sync: refresh numbers without disturbing what the person is typing. */
@@ -1194,6 +1246,7 @@ function repaint(){
   if($('#sheet'))return;
   var ae=document.activeElement;
   if(S.tab==='leads'&&!(ae&&ae.id==='search'))renderLeads();
+  else if(S.tab==='board')renderBoard();
   else if(S.tab==='rescan')renderRescan();
 }
 $$('nav button').forEach(function(b){b.onclick=function(){
