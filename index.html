@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- GSXP Lead Capture | VERSION 1.10 | 17 Nov 2026 | team leaderboard (leads only, duplicate badges counted once) -->
+<!-- GSXP Lead Capture | VERSION 1.12 | 23 Nov 2026 | rescan buttons no longer freeze if the clean QR can't be drawn; save errors are shown -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -233,8 +233,8 @@ textarea.csv{min-height:180px;font-family:ui-monospace,Menlo,monospace;font-size
 var SUPABASE_URL='https://zhyiakcgajywbnjzqjth.supabase.co';
 var SUPABASE_KEY='sb_publishable_mJPv05SVeyssDTArb_ZZjg_0E4lMaS1';   // publishable key: safe in the browser, protected by row level security
 var BUCKET='badge-photos';
-var VERSION='1.10';
-var TEAM = ['Brook Tuffin','Dan Reed','Jamie Davenport','Max Huber','Nathaly Riano-Gomez','Rod Morton','Steven Howes'];  // Sales + Support staff from Events HQ
+var VERSION='1.12';
+var TEAM = ['Amy Lague','Brook Tuffin','Charlie Edwards','Dan Reed','Guy Morton','Jamie Davenport','Max Huber','Nathaly Riano-Gomez','Rod Morton','Steven Howes'];  // Sales + Support staff from Events HQ
 var INTERESTS = ['Puttify','Adventure Golf','Modular Golf','Signature Greens','Aerial courses','Play','Themed environments','FECs','Stadium and arena'];
 var SUPPLIER_CATS = ['Materials','Lighting and AV','Technology','Signage and print','Equipment','Services','Other'];   // edit this list to change the supplier categories
 var RATINGS = [{id:'hot',label:'Hot',c:'var(--hot)'},{id:'warm',label:'Warm',c:'var(--warm)'},{id:'cold',label:'Cold',c:'var(--cold)'}];
@@ -614,11 +614,14 @@ function drawQR(canvas,text){
   var q=null,levels=['M','L'];
   for(var i=0;i<levels.length&&!q;i++){try{var t=window.qrcode(0,levels[i]);t.addData(text);t.make();q=t}catch(e){q=null}}
   if(!q)return false;
-  var n=q.getModuleCount(),quiet=4,cell=Math.max(4,Math.floor(900/(n+quiet*2))),size=cell*(n+quiet*2);
-  canvas.width=canvas.height=size;
-  var ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,size,size);ctx.fillStyle='#000';
-  for(var r=0;r<n;r++)for(var c=0;c<n;c++)if(q.isDark(r,c))ctx.fillRect((c+quiet)*cell,(r+quiet)*cell,cell,cell);
-  return true;
+  try{
+    var n=q.getModuleCount(),quiet=4,cell=Math.max(4,Math.floor(900/(n+quiet*2))),size=cell*(n+quiet*2);
+    canvas.width=canvas.height=size;
+    var ctx=canvas.getContext('2d');if(!ctx)return false;
+    ctx.fillStyle='#fff';ctx.fillRect(0,0,size,size);ctx.fillStyle='#000';
+    for(var r=0;r<n;r++)for(var c=0;c<n;c++)if(q.isDark(r,c))ctx.fillRect((c+quiet)*cell,(r+quiet)*cell,cell,cell);
+    return true;
+  }catch(e){return false}
 }
 
 /* ---------- Draft / lead model ---------- */
@@ -993,15 +996,18 @@ function renderRescan(){
     (note?'<div class="notebox">'+esc(note)+'</div><button class="btn block" type="button" id="copyNote">Copy notes for the scanner</button>':'')+
     '<div class="row2"><button class="btn" type="button" id="skip"'+(q.length<2?' disabled':'')+'>Skip</button><button class="btn primary" type="button" id="done">Scanned, next</button></div>'+
   '</div>';
-  if(view==='clean'){var cv=$('#bigqr');if(!drawQR(cv,qrText)){S.rqView='photo';renderRescan();return}}
+  if(view==='clean'){var cv=$('#bigqr'),okQR=false;try{okQR=drawQR(cv,qrText)}catch(e){okQR=false}if(!okQR){S.rqView='photo';toast('Couldn’t draw the clean code, so showing the original photo.');renderRescan();return}}
   $$('[data-rv]').forEach(function(b){b.onclick=function(){S.rqView=b.dataset.rv;renderRescan()}});
   var cn=$('#copyNote');if(cn)cn.onclick=async function(){toast(await copyText(note)?'Notes copied.':'Couldn’t copy. Select the text instead.')};
   $('#skip').onclick=function(){S.rq=(S.rq+1)%q.length;S.rqId=q[S.rq].id;renderRescan();v.scrollTop=0};
   $('#done').onclick=async function(){
-    var now=Date.now();
-    var nl=Object.assign({},l,{status:'scanned',scanSource:'Rescanned from photo',scannedAt:now,scannedBy:S.settings.name||'',updatedAt:now,dirty:true});
-    await dbPut(nl);await refresh();S.rqId=null;renderAll();v.scrollTop=0;queueSync(100);
-    toast(queue().length?'Marked as scanned.':'All caught up. Nothing left to rescan.');
+    var btn=this;if(btn.disabled)return;btn.disabled=true;
+    try{
+      var now=Date.now();
+      var nl=Object.assign({},l,{status:'scanned',scanSource:'Rescanned from photo',scannedAt:now,scannedBy:S.settings.name||'',updatedAt:now,dirty:true});
+      await dbPut(nl);await refresh();S.rqId=null;renderAll();v.scrollTop=0;queueSync(100);
+      toast(queue().length?'Marked as scanned.':'All caught up. Nothing left to rescan.');
+    }catch(e){btn.disabled=false;toast('Couldn’t save that: '+(errText(e)||'unknown error')+'. Try again.')}
   };
 }
 
