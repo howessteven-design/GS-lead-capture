@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- GSXP Lead Capture | VERSION 1.12 | 23 Nov 2026 | rescan buttons no longer freeze if the clean QR can't be drawn; save errors are shown -->
+<!-- GSXP Lead Capture | VERSION 1.13 | 23 Nov 2026 | rescan header shows waiting / scanned totals and a progress bar based on scanned leads -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -233,7 +233,7 @@ textarea.csv{min-height:180px;font-family:ui-monospace,Menlo,monospace;font-size
 var SUPABASE_URL='https://zhyiakcgajywbnjzqjth.supabase.co';
 var SUPABASE_KEY='sb_publishable_mJPv05SVeyssDTArb_ZZjg_0E4lMaS1';   // publishable key: safe in the browser, protected by row level security
 var BUCKET='badge-photos';
-var VERSION='1.12';
+var VERSION='1.13';
 var TEAM = ['Amy Lague','Brook Tuffin','Charlie Edwards','Dan Reed','Guy Morton','Jamie Davenport','Max Huber','Nathaly Riano-Gomez','Rod Morton','Steven Howes'];  // Sales + Support staff from Events HQ
 var INTERESTS = ['Puttify','Adventure Golf','Modular Golf','Signature Greens','Aerial courses','Play','Themed environments','FECs','Stadium and arena'];
 var SUPPLIER_CATS = ['Materials','Lighting and AV','Technology','Signage and print','Equipment','Services','Other'];   // edit this list to change the supplier categories
@@ -983,10 +983,11 @@ function renderRescan(){
   var canClean=qrDrawable(qrText),u=urlFor(l);
   var view=(canClean&&S.rqView==='clean')?'clean':'photo';
   var r=RATINGS.find(function(x){return x.id===l.rating});
-  var note=noteForScanner(l);
+  var note=noteForScanner(l),rc=counts();
   v.innerHTML='<div class="stack">'+
-    '<div style="display:flex;justify-content:space-between;align-items:baseline"><h2>Rescan</h2><span class="small muted">Badge '+(S.rq+1)+' of '+q.length+' waiting</span></div>'+
-    '<div class="prog" aria-hidden="true"><i style="width:'+Math.round(((S.rq+1)/q.length)*100)+'%"></i></div>'+
+    '<div style="display:flex;justify-content:space-between;align-items:baseline"><h2>Rescan</h2><span style="font-weight:700">'+q.length+' waiting</span></div>'+
+    '<div class="prog" aria-hidden="true"><i style="width:'+(rc.leads?Math.round(rc.scanned/rc.leads*100):0)+'%"></i></div>'+
+    '<p class="small muted" style="margin-top:-6px">'+rc.scanned+' of '+rc.leads+' scanned · showing badge '+(S.rq+1)+' of '+q.length+'</p>'+
     (canClean?'<div class="filters"><button type="button" data-rv="clean" aria-pressed="'+(view==='clean')+'">Clean code</button><button type="button" data-rv="photo" aria-pressed="'+(view==='photo')+'">Original photo</button></div>':'')+
     '<div class="qrbox" id="qrbox">'+(view==='clean'?'<canvas id="bigqr" aria-label="Badge QR code, redrawn for scanning"></canvas>':(u?'<img src="'+u+'" alt="Badge photo">':'<p class="small muted">'+((l.photo||l.photoPath)?'Photo is still loading. Check your connection.':'No photo saved for this lead.')+'</p>'))+'</div>'+
     '<p class="small muted">'+(view==='clean'?'Turn your screen brightness up, then scan this code with the licensed scanner.':(l.qr?'Scanning the original photo.':'No QR was read from this photo, so scan the original.'))+'</p>'+
