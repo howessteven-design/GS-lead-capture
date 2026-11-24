@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- GSXP Lead Capture | VERSION 1.13 | 23 Nov 2026 | rescan header shows waiting / scanned totals and a progress bar based on scanned leads -->
+<!-- GSXP Lead Capture | VERSION 1.15 | 24 Nov 2026 | select leads and download their badge photos as one ZIP (with an index.csv) -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -202,6 +202,10 @@ textarea.csv{min-height:180px;font-family:ui-monospace,Menlo,monospace;font-size
 .board-row .ct{font-family:var(--head);font-size:28px;font-weight:700;line-height:1}
 .board-row .bar{height:5px;border-radius:3px;background:var(--surface2);margin-top:7px;overflow:hidden}
 .board-row .bar i{display:block;height:100%;background:var(--primary);border-radius:3px}
+.chk{width:22px;height:22px;border-radius:50%;border:2px solid var(--line);flex:none;display:grid;place-items:center;font-size:13px;color:#fff;font-weight:700}
+.lead.sel{border-color:var(--primary);box-shadow:inset 0 0 0 1px var(--primary)}
+.lead.sel .chk{background:var(--primary);border-color:var(--primary)}
+.selbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 </style>
 </head>
 <body>
@@ -233,7 +237,7 @@ textarea.csv{min-height:180px;font-family:ui-monospace,Menlo,monospace;font-size
 var SUPABASE_URL='https://zhyiakcgajywbnjzqjth.supabase.co';
 var SUPABASE_KEY='sb_publishable_mJPv05SVeyssDTArb_ZZjg_0E4lMaS1';   // publishable key: safe in the browser, protected by row level security
 var BUCKET='badge-photos';
-var VERSION='1.13';
+var VERSION='1.15';
 var TEAM = ['Amy Lague','Brook Tuffin','Charlie Edwards','Dan Reed','Guy Morton','Jamie Davenport','Max Huber','Nathaly Riano-Gomez','Rod Morton','Steven Howes'];  // Sales + Support staff from Events HQ
 var INTERESTS = ['Puttify','Adventure Golf','Modular Golf','Signature Greens','Aerial courses','Play','Themed environments','FECs','Stadium and arena'];
 var SUPPLIER_CATS = ['Materials','Lighting and AV','Technology','Signage and print','Equipment','Services','Other'];   // edit this list to change the supplier categories
@@ -637,9 +641,10 @@ function leadFromDraft(d){
   var base=d._lead||{};
   var changed=!!d.photoChanged;
   var sup=d.contactType==='supplier';
-  var status=sup?'na':(d.alreadyScanned?'scanned':'toscan');
+  var status=sup?(base.status==='scanned'?'scanned':'na'):(d.alreadyScanned?'scanned':'toscan');
   var scanSource=base.scanSource||'',scannedAt=base.scannedAt||null,scannedBy=base.scannedBy||'';
-  if(sup){scanSource='';scannedAt=null;scannedBy=''}
+  if(sup&&status!=='scanned'){scanSource='';scannedAt=null;scannedBy=''}
+  else if(sup){/* scanned supplier: keep the scan details */}
   else if(status==='scanned'){
     if(!scanSource)scanSource='Licensed scanner at booth';
     if(!scannedAt){scannedAt=Date.now();scannedBy=S.settings.name||''}
@@ -654,6 +659,7 @@ function leadFromDraft(d){
 function hasContent(d){return !!(d.photo||d.name.trim()||d.company.trim()||d.notes.trim())}
 function noteForScanner(l){
   var b=[];
+  if(isSup(l)){b.push('SUPPLIER - NOT FOR HUBSPOT');if(l.supplierCat)b.push('Supplies: '+l.supplierCat);if(l.notes)b.push(l.notes);if(l.capturedBy)b.push('Met by '+l.capturedBy);return b.join('. ')}
   if(l.rating)b.push(cap(l.rating));
   if(l.interests&&l.interests.length)b.push('Interested in: '+l.interests.join(', '));
   if(l.notes)b.push(l.notes);
@@ -906,7 +912,8 @@ function counts(){
   var leads=S.leads.filter(function(l){return !isSup(l)});
   var toscan=leads.filter(function(l){return l.status==='toscan'}).length;
   var mine=S.leads.filter(function(l){return l.capturedBy&&l.capturedBy===S.settings.name}).length;
-  return {all:S.leads.length,leads:leads.length,suppliers:S.leads.length-leads.length,toscan:toscan,scanned:leads.length-toscan,mine:mine};
+  var sups=S.leads.filter(isSup),supScanned=sups.filter(function(l){return l.status==='scanned'}).length;
+  return {all:S.leads.length,leads:leads.length,suppliers:sups.length,toscan:toscan,scanned:leads.length-toscan,mine:mine,supScanned:supScanned,supWaiting:sups.length-supScanned};
 }
 function statsHTML(c){
   return '<div class="stat"><b>'+c.leads+'</b><span>Leads</span></div><div class="stat"><b>'+c.suppliers+'</b><span>Suppliers</span></div><div class="stat"><b>'+c.mine+'</b><span>Yours</span></div><div class="stat"><b>'+c.toscan+'</b><span>To rescan</span></div>';
@@ -946,11 +953,13 @@ function renderLeads(){
     var r=RATINGS.find(function(x){return x.id===l.rating});
     var sub=l.name&&l.company?l.company:(l.notes?trunc(l.notes,50):'');
     var u=urlFor(l);
-    return '<button class="lead" type="button" data-open="'+l.id+'">'+
+    var on=!!(S.sel&&S.sel[l.id]);
+    return '<button class="lead'+(S.selMode&&on?' sel':'')+'" type="button" data-open="'+l.id+'"'+(S.selMode?' aria-pressed="'+on+'"':'')+'>'+
+      (S.selMode?'<span class="chk">'+(on?'✓':'')+'</span>':'')+
       (u?'<img class="thumb" src="'+u+'" alt="">':'<div class="thumb"></div>')+
       '<div class="body"><div class="nm">'+esc(leadTitle(l))+'</div><div class="sub">'+esc(sub||timeLabel(l.createdAt))+'</div>'+
       '<div class="tags">'+(r?'<span class="tag" style="--c:'+r.c+'"><i></i>'+r.label+'</span>':'')+
-      (isSup(l)?'<span class="tag" style="--c:var(--violet)"><i></i>Supplier</span>'+(l.supplierCat?'<span class="tag">'+esc(l.supplierCat)+'</span>':''):
+      (isSup(l)?'<span class="tag" style="--c:var(--violet)"><i></i>Supplier</span>'+(l.supplierCat?'<span class="tag">'+esc(l.supplierCat)+'</span>':'')+(l.status==='scanned'?'<span class="tag scanned">Scanned</span>':''):
       '<span class="tag '+l.status+'">'+(l.status==='scanned'?'Scanned':'To scan')+'</span>'+
       (l.qrPending?'<span class="tag" style="--c:var(--violet)"><i></i>Reading QR</span>':((l.photo||l.photoPath)&&!l.qr?'<span class="tag" style="--c:var(--bad)"><i></i>No QR</span>':'')))+
       (l.dirty?'<span class="tag" style="--c:var(--warm)"><i></i>Syncing</span>':'')+
@@ -959,22 +968,25 @@ function renderLeads(){
   v.innerHTML='<div class="stack"><div class="tools">'+
     '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h2>Leads</h2><div style="display:flex;gap:8px"><button class="btn sm" type="button" id="exportSupBtn"'+(c.suppliers?'':' disabled')+'>Suppliers CSV</button><button class="btn sm primary" type="button" id="exportBtn"'+(c.leads?'':' disabled')+'>Leads CSV</button></div></div>'+
     '<input type="text" id="search" placeholder="Search name, company, notes or who met them" value="'+esc(S.q)+'" aria-label="Search leads">'+
-    '<div class="filters">'+[['all','All ('+c.all+')'],['mine','Mine ('+c.mine+')'],['toscan','To scan ('+c.toscan+')'],['scanned','Scanned ('+c.scanned+')'],['suppliers','Suppliers ('+c.suppliers+')']].map(function(f){return '<button type="button" data-filter="'+f[0]+'" aria-pressed="'+(S.filter===f[0])+'">'+f[1]+'</button>'}).join('')+'</div></div>'+
+    '<div class="filters">'+[['all','All ('+c.all+')'],['mine','Mine ('+c.mine+')'],['toscan','To scan ('+c.toscan+')'],['scanned','Scanned ('+c.scanned+')'],['suppliers','Suppliers ('+c.suppliers+')']].map(function(f){return '<button type="button" data-filter="'+f[0]+'" aria-pressed="'+(S.filter===f[0])+'">'+f[1]+'</button>'}).join('')+'</div>'+selBarHTML(list)+'</div>'+
     (rows||'<div class="empty"><h3>'+(c.all?'No matches':'No leads yet')+'</h3><p class="small">'+(c.all?'Try a different search or filter.':'Photograph a badge on the Capture tab and it will show up here for the whole team.')+'</p></div>')+
   '</div>';
   v.scrollTop=keep;
   $('#search').oninput=function(e){S.q=e.target.value;var pos=e.target.selectionStart;renderLeads();var s=$('#search');s.focus();try{s.setSelectionRange(pos,pos)}catch(x){}};
   $$('[data-filter]').forEach(function(b){b.onclick=function(){S.filter=b.dataset.filter;renderLeads()}});
-  $$('[data-open]').forEach(function(b){b.onclick=function(){openEdit(b.dataset.open)}});
+  $$('[data-open]').forEach(function(b){b.onclick=function(){if(S.selMode){S.sel=S.sel||{};S.sel[b.dataset.open]=!S.sel[b.dataset.open];renderLeads()}else openEdit(b.dataset.open)}});
+  bindSelBar(list);
   $('#exportBtn').onclick=function(){openExport('lead')};
   $('#exportSupBtn').onclick=function(){openExport('supplier')};
 }
-function queue(){return S.leads.filter(function(l){return l.status==='toscan'&&!isSup(l)}).sort(function(a,b){return a.createdAt-b.createdAt})}
+function queue(kind){kind=kind||S.rqKind||'lead';return S.leads.filter(function(l){return kind==='supplier'?(isSup(l)&&l.status!=='scanned'):(l.status==='toscan'&&!isSup(l))}).sort(function(a,b){return a.createdAt-b.createdAt})}
+function rkToggle(){var c=counts();return '<div class="filters"><button type="button" data-rk="lead" aria-pressed="'+((S.rqKind||'lead')==='lead')+'">Leads ('+c.toscan+')</button><button type="button" data-rk="supplier" aria-pressed="'+(S.rqKind==='supplier')+'">Suppliers ('+c.supWaiting+')</button></div>'}
+function bindRK(){$$('[data-rk]').forEach(function(b){b.onclick=function(){S.rqKind=b.dataset.rk;S.rq=0;S.rqId=null;renderRescan()}})}
 function renderRescan(){
-  var q=queue(),v=$('#view');
+  var kind=S.rqKind==='supplier'?'supplier':'lead',q=queue(kind),v=$('#view');
   if(!q.length){
-    v.innerHTML='<div class="empty"><h3>Nothing waiting to rescan</h3><p class="small">Badges anyone on the team photographs will queue here, ready to scan with the licensed scanner.</p></div>';
-    S.rqId=null;return;
+    v.innerHTML='<div class="stack">'+rkToggle()+'<div class="empty"><h3>'+(kind==='supplier'?'No suppliers waiting to rescan':'Nothing waiting to rescan')+'</h3><p class="small">'+(kind==='supplier'?'Supplier contacts that haven’t been scanned yet will queue here.':'Badges anyone on the team photographs will queue here, ready to scan with the licensed scanner.')+'</p></div></div>';
+    bindRK();S.rqId=null;return;
   }
   var idx=S.rqId?q.findIndex(function(x){return x.id===S.rqId}):-1;
   if(idx<0)idx=Math.min(S.rq,q.length-1);
@@ -983,22 +995,23 @@ function renderRescan(){
   var canClean=qrDrawable(qrText),u=urlFor(l);
   var view=(canClean&&S.rqView==='clean')?'clean':'photo';
   var r=RATINGS.find(function(x){return x.id===l.rating});
-  var note=noteForScanner(l),rc=counts();
-  v.innerHTML='<div class="stack">'+
+  var note=noteForScanner(l),rc=counts(),tot=kind==='supplier'?rc.suppliers:rc.leads,done=kind==='supplier'?rc.supScanned:rc.scanned;
+  v.innerHTML='<div class="stack">'+rkToggle()+
     '<div style="display:flex;justify-content:space-between;align-items:baseline"><h2>Rescan</h2><span style="font-weight:700">'+q.length+' waiting</span></div>'+
-    '<div class="prog" aria-hidden="true"><i style="width:'+(rc.leads?Math.round(rc.scanned/rc.leads*100):0)+'%"></i></div>'+
-    '<p class="small muted" style="margin-top:-6px">'+rc.scanned+' of '+rc.leads+' scanned · showing badge '+(S.rq+1)+' of '+q.length+'</p>'+
+    '<div class="prog" aria-hidden="true"><i style="width:'+(tot?Math.round(done/tot*100):0)+'%"></i></div>'+
+    '<p class="small muted" style="margin-top:-6px">'+done+' of '+tot+' scanned · showing badge '+(S.rq+1)+' of '+q.length+'</p>'+
     (canClean?'<div class="filters"><button type="button" data-rv="clean" aria-pressed="'+(view==='clean')+'">Clean code</button><button type="button" data-rv="photo" aria-pressed="'+(view==='photo')+'">Original photo</button></div>':'')+
     '<div class="qrbox" id="qrbox">'+(view==='clean'?'<canvas id="bigqr" aria-label="Badge QR code, redrawn for scanning"></canvas>':(u?'<img src="'+u+'" alt="Badge photo">':'<p class="small muted">'+((l.photo||l.photoPath)?'Photo is still loading. Check your connection.':'No photo saved for this lead.')+'</p>'))+'</div>'+
     '<p class="small muted">'+(view==='clean'?'Turn your screen brightness up, then scan this code with the licensed scanner.':(l.qr?'Scanning the original photo.':'No QR was read from this photo, so scan the original.'))+'</p>'+
     '<div><div style="font-weight:700;font-size:18px;font-family:var(--head)">'+esc(leadTitle(l))+'</div>'+(l.name&&l.company?'<div class="muted">'+esc(l.company)+'</div>':'')+
     (l.capturedBy?'<div class="small muted">Met by '+esc(l.capturedBy)+'</div>':'')+
-    (r?'<div class="tags"><span class="tag" style="--c:'+r.c+'"><i></i>'+r.label+'</span></div>':'')+'</div>'+
-    (note?'<div class="notebox">'+esc(note)+'</div><button class="btn block" type="button" id="copyNote">Copy notes for the scanner</button>':'')+
+    (r?'<div class="tags"><span class="tag" style="--c:'+r.c+'"><i></i>'+r.label+'</span></div>':'')+(isSup(l)&&l.supplierCat?'<div class="tags"><span class="tag" style="--c:var(--violet)"><i></i>'+esc(l.supplierCat)+'</span></div>':'')+'</div>'+
+    (note?'<div class="notebox">'+esc(note)+'</div><button class="btn block" type="button" id="copyNote">'+(kind==='supplier'?'Copy supplier note for the scanner':'Copy notes for the scanner')+'</button>':'')+
     '<div class="row2"><button class="btn" type="button" id="skip"'+(q.length<2?' disabled':'')+'>Skip</button><button class="btn primary" type="button" id="done">Scanned, next</button></div>'+
   '</div>';
   if(view==='clean'){var cv=$('#bigqr'),okQR=false;try{okQR=drawQR(cv,qrText)}catch(e){okQR=false}if(!okQR){S.rqView='photo';toast('Couldn’t draw the clean code, so showing the original photo.');renderRescan();return}}
   $$('[data-rv]').forEach(function(b){b.onclick=function(){S.rqView=b.dataset.rv;renderRescan()}});
+  bindRK();
   var cn=$('#copyNote');if(cn)cn.onclick=async function(){toast(await copyText(note)?'Notes copied.':'Couldn’t copy. Select the text instead.')};
   $('#skip').onclick=function(){S.rq=(S.rq+1)%q.length;S.rqId=q[S.rq].id;renderRescan();v.scrollTop=0};
   $('#done').onclick=async function(){
@@ -1076,6 +1089,87 @@ function buildSupplierCSV(list){
   return '\uFEFF'+rows.join('\r\n');
 }
 function slug(s){return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'')}
+/* ---------- Select leads and download their badge photos as a ZIP ---------- */
+function selCount(){var n=0;for(var k in (S.sel||{}))if(S.sel[k])n++;return n}
+function selBarHTML(list){
+  if(!S.selMode)return '<div class="selbar"><button class="btn sm" type="button" id="selBtn">Select leads to download photos</button></div>';
+  var n=selCount();
+  return '<div class="selbar"><span class="small" style="font-weight:700" id="selN">'+n+' selected</span>'+
+    '<button class="btn sm" type="button" id="selAll">Select all shown ('+list.length+')</button>'+
+    '<button class="btn sm" type="button" id="selClear">Clear</button>'+
+    '<button class="btn sm primary" type="button" id="selDl"'+((n&&!S.dlBusy)?'':' disabled')+'>'+(S.dlBusy?esc(S.dlBusy):'Download photos ('+n+')')+'</button>'+
+    '<button class="btn sm" type="button" id="selDone">Done</button></div>';
+}
+function bindSelBar(list){
+  var b=$('#selBtn');if(b)b.onclick=function(){S.selMode=true;S.sel={};renderLeads()};
+  var a=$('#selAll');if(a)a.onclick=function(){S.sel=S.sel||{};list.forEach(function(l){S.sel[l.id]=true});renderLeads()};
+  var c=$('#selClear');if(c)c.onclick=function(){S.sel={};renderLeads()};
+  var d=$('#selDone');if(d)d.onclick=function(){S.selMode=false;S.sel={};renderLeads()};
+  var x=$('#selDl');if(x)x.onclick=downloadPhotos;
+}
+var CRC_T=null;
+function crc32(u8){
+  if(!CRC_T){CRC_T=new Uint32Array(256);for(var n=0;n<256;n++){var c=n;for(var k=0;k<8;k++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);CRC_T[n]=c>>>0}}
+  var crc=0xFFFFFFFF;for(var i=0;i<u8.length;i++)crc=CRC_T[(crc^u8[i])&255]^(crc>>>8);return (crc^0xFFFFFFFF)>>>0;
+}
+function makeZip(files){      // files: [{name, data:Uint8Array}], stored without compression (photos are already compressed)
+  var enc=new TextEncoder(),parts=[],cd=[],off=0,d=new Date();
+  var dd=((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate(),tt=(d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1);
+  files.forEach(function(f){
+    var nm=enc.encode(f.name),crc=crc32(f.data),sz=f.data.length;
+    var h=new DataView(new ArrayBuffer(30));
+    h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint16(6,0x0800,true);h.setUint16(8,0,true);h.setUint16(10,tt,true);h.setUint16(12,dd,true);
+    h.setUint32(14,crc,true);h.setUint32(18,sz,true);h.setUint32(22,sz,true);h.setUint16(26,nm.length,true);h.setUint16(28,0,true);
+    parts.push(new Uint8Array(h.buffer),nm,f.data);
+    var c=new DataView(new ArrayBuffer(46));
+    c.setUint32(0,0x02014b50,true);c.setUint16(4,20,true);c.setUint16(6,20,true);c.setUint16(8,0x0800,true);c.setUint16(10,0,true);c.setUint16(12,tt,true);c.setUint16(14,dd,true);
+    c.setUint32(16,crc,true);c.setUint32(20,sz,true);c.setUint32(24,sz,true);c.setUint16(28,nm.length,true);c.setUint16(30,0,true);c.setUint16(32,0,true);c.setUint16(34,0,true);c.setUint16(36,0,true);c.setUint32(38,0,true);c.setUint32(42,off,true);
+    cd.push(new Uint8Array(c.buffer),nm);off+=30+nm.length+sz;
+  });
+  var cs=0;cd.forEach(function(p){cs+=p.length});
+  var e=new DataView(new ArrayBuffer(22));
+  e.setUint32(0,0x06054b50,true);e.setUint16(4,0,true);e.setUint16(6,0,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,cs,true);e.setUint32(16,off,true);e.setUint16(20,0,true);
+  return new Blob(parts.concat(cd,[new Uint8Array(e.buffer)]),{type:'application/zip'});
+}
+function blobBytes(b){
+  if(b.arrayBuffer)return b.arrayBuffer().then(function(x){return new Uint8Array(x)});
+  return new Promise(function(res,rej){var r=new FileReader();r.onload=function(){res(new Uint8Array(r.result))};r.onerror=function(){rej(r.error)};r.readAsArrayBuffer(b)});
+}
+async function saveFile(fn,blob){
+  try{
+    var f=new File([blob],fn,{type:blob.type});
+    if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:fn});return 'shared'}
+  }catch(e){if(e&&e.name==='AbortError')return 'cancelled'}
+  try{
+    var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fn;document.body.appendChild(a);a.click();
+    setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},1500);return 'downloaded';
+  }catch(e){return 'fail'}
+}
+async function downloadPhotos(){
+  if(S.dlBusy)return;
+  var leads=S.leads.filter(function(l){return S.sel&&S.sel[l.id]}).sort(function(a,b){return a.createdAt-b.createdAt});
+  if(!leads.length){toast('Select some leads first.');return}
+  var files=[],missing=0,rows=[['File','Type','Captured by','Captured at (UTC)','Rating','Product tags','Notes','Badge QR ID','Scan status','Name','Company'].map(csvCell).join(',')];
+  try{
+    for(var i=0;i<leads.length;i++){
+      S.dlBusy='Preparing '+(i+1)+' of '+leads.length;var b=$('#selDl');if(b){b.disabled=true;b.textContent=S.dlBusy}
+      var l=leads[i],name='',bytes=null;
+      try{
+        var blob=l.photo||null;
+        if(!blob&&l.photoPath&&sb){var r=await sb.storage.from(BUCKET).download(l.photoPath);if(r.error)throw r.error;blob=r.data}
+        if(blob){bytes=await blobBytes(blob)}
+      }catch(e){bytes=null}
+      if(bytes&&bytes.length){name=l.photoPath||(l.id+'.jpg');files.push({name:name,data:bytes})}else{missing++}
+      rows.push([name||'(no photo)',isSup(l)?'Supplier':'Lead',l.capturedBy,new Date(l.createdAt).toISOString().slice(0,16).replace('T',' '),cap(l.rating),(l.interests||[]).join('; '),l.notes,l.qr,l.status==='scanned'?'Scanned':(isSup(l)?'':'To scan'),l.name,l.company].map(csvCell).join(','));
+    }
+    if(!files.length){toast('None of the selected leads has a photo to download.');return}
+    files.push({name:'index.csv',data:new TextEncoder().encode('\uFEFF'+rows.join('\r\n'))});
+    var zip=makeZip(files),stamp=new Date().toISOString().slice(0,10);
+    var res=await saveFile('IAAPA-photos-'+(files.length-1)+'-'+stamp+'.zip',zip);
+    toast(res==='cancelled'?'Cancelled.':((files.length-1)+' photo'+(files.length===2?'':'s')+(res==='shared'?' shared.':' downloaded.')+(missing?' '+missing+' had no photo.':'')));
+  }catch(e){toast('Couldn’t build the ZIP: '+(errText(e)||'unknown error'))}
+  finally{S.dlBusy=null;if(S.tab==='leads')renderLeads()}
+}
 async function saveCSV(fn,csv){
   var blob=new Blob([csv],{type:'text/csv'});
   try{
@@ -1236,7 +1330,7 @@ function paintChrome(){
   $('#whoT').textContent=n?(n+' · '+(S.settings.event||'')):'Set up';
   var c=counts();
   $('#bLeads').textContent=c.all?String(c.all):'';
-  $('#bScan').textContent=c.toscan?String(c.toscan):'';
+  $('#bScan').textContent=(c.toscan+c.supWaiting)?String(c.toscan+c.supWaiting):'';
   $$('nav button').forEach(function(b){if(b.dataset.tab===S.tab)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});
   paintSync();
 }
